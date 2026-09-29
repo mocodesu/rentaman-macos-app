@@ -117,6 +117,10 @@ struct ReportsView: View {
                 }
                 .padding(.horizontal, 24)
                 
+                // 🆕 Recommended budget advisor
+BudgetRecommendationCard()
+    .padding(.horizontal, 24)
+    
                 // MARK: - Payment Rate Strip
                 if analytics.totalBillsThisYear > 0 {
                     PaymentRateStrip(

@@ -21,8 +21,9 @@ struct AllBillsView: View {
     @State private var filterStatus: FilterStatus = .all
     @State private var selectedPropertyId: String? = nil
     @State private var editingBillWrapper: EditingBillWrapper? = nil
+    @State private var trendWrapper: TrendWrapper? = nil          // 🆕
 
-    // ── Cached derived data (recomputed only on real input changes) ──
+    // ── Cached derived data ──
     @State private var cachedFiltered: [Bill] = []
     @State private var cachedPaged: [Bill] = []
     @State private var cachedStats: BillsStats = .zero
@@ -55,6 +56,12 @@ struct AllBillsView: View {
     }
 
     struct EditingBillWrapper: Identifiable {
+        let id: String
+        let bill: Bill
+    }
+
+    // 🆕
+    struct TrendWrapper: Identifiable {
         let id: String
         let bill: Bill
     }
@@ -92,6 +99,9 @@ struct AllBillsView: View {
                         onMarkPaid: markBills,
                         onOpenSheet: { bill in
                             editingBillWrapper = EditingBillWrapper(id: bill.id, bill: bill)
+                        },
+                        onOpenTrend: { bill in                                  // 🆕
+                            trendWrapper = TrendWrapper(id: bill.id, bill: bill)
                         }
                     )
                     Divider().opacity(0.5)
@@ -109,7 +119,11 @@ struct AllBillsView: View {
             AddBillView(billToEdit: wrapper.bill)
                 .environment(\.appCurrency, currency)
         }
-        // ── Cache invalidation ──
+        // 🆕 Trend sheet
+        .sheet(item: $trendWrapper) { wrapper in
+            BillTrendView(initialBill: wrapper.bill)
+                .environment(\.appCurrency, currency)
+        }
         .onAppear { recomputeAll() }
         .onChange(of: allBills.count)      { _, _ in recomputeAll() }
         .onChange(of: searchText)          { _, _ in currentPage = 1; recomputeAll() }
@@ -282,6 +296,7 @@ private struct AllBillsTable: View {
     let onDelete: (Set<Bill.ID>) -> Void
     let onMarkPaid: (Set<Bill.ID>, Bool) -> Void
     let onOpenSheet: (Bill) -> Void
+    let onOpenTrend: (Bill) -> Void          // 🆕
 
     var body: some View {
         Table(bills, selection: $selection, sortOrder: $sortOrder) {
@@ -376,6 +391,16 @@ private struct AllBillsTable: View {
                         .buttonStyle(.borderless)
                         .help("Mark as paid")
                     }
+                    // 🆕 Trend button
+                    Button {
+                        onOpenTrend(bill)
+                    } label: {
+                        Image(systemName: "chart.xyaxis.line")
+                            .font(.system(size: 13)).foregroundStyle(.purple)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("View trend")
+
                     Button {
                         onOpenSheet(bill)
                     } label: {
@@ -386,7 +411,7 @@ private struct AllBillsTable: View {
                     .help("Edit")
                 }
             }
-            .width(60)
+            .width(90)          // widened from 60 → 90 to fit the trend button
         }
         .contextMenu(forSelectionType: Bill.ID.self) { selectedIds in
             if !selectedIds.isEmpty {
@@ -396,6 +421,17 @@ private struct AllBillsTable: View {
                         onOpenSheet(bill)
                     }
                 } label: { Label("Edit", systemImage: "square.and.pencil") }
+
+                // 🆕 View Trend (single-selection only)
+                if selectedIds.count == 1,
+                   let firstId = selectedIds.first,
+                   let bill = allBills.first(where: { $0.id == firstId }) {
+                    Button {
+                        onOpenTrend(bill)
+                    } label: {
+                        Label("View Trend", systemImage: "chart.xyaxis.line")
+                    }
+                }
 
                 Button {
                     onDuplicate(selectedIds)
@@ -423,7 +459,7 @@ private struct AllBillsTable: View {
     }
 }
 
-// MARK: - Pagination Bar
+// MARK: - Pagination Bar (unchanged)
 struct PaginationBar: View {
     @Binding var currentPage: Int
     @Binding var pageSize: AllBillsView.PageSize
@@ -510,7 +546,7 @@ struct PaginationBar: View {
     }
 }
 
-// MARK: - Search Field
+// MARK: - Search Field (unchanged)
 struct SearchField: View {
     @Binding var text: String
     var body: some View {
@@ -536,7 +572,7 @@ struct SearchField: View {
     }
 }
 
-// MARK: - Property Filter Menu
+// MARK: - Property Filter Menu (unchanged)
 struct PropertyFilterMenu: View {
     let properties: [Property]
     @Binding var selection: String?
@@ -574,7 +610,7 @@ struct PropertyFilterMenu: View {
     }
 }
 
-// MARK: - Status Segmented Control
+// MARK: - Status Segmented Control (unchanged)
 struct StatusSegmentedControl: View {
     @Binding var selection: AllBillsView.FilterStatus
     @Namespace private var namespace
