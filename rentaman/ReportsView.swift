@@ -121,6 +121,9 @@ struct ReportsView: View {
 BudgetRecommendationCard()
     .padding(.horizontal, 24)
     
+    // After the BudgetRecommendationCard line:
+CashFlowPlannerView()
+    .padding(.horizontal, 24)
                 // MARK: - Payment Rate Strip
                 if analytics.totalBillsThisYear > 0 {
                     PaymentRateStrip(

@@ -2,6 +2,43 @@ import SwiftUI
 import SwiftData
 import Charts
 
+// MARK: - Buffer level
+enum BudgetBufferLevel: String, CaseIterable, Identifiable {
+    case tight       = "Tight"
+    case comfortable = "Comfortable"
+    case generous    = "Generous"
+
+    var id: String { rawValue }
+
+    /// Percentage added on top of the base (median) amount.
+    var percent: Double {
+        switch self {
+        case .tight:       return 0.10   // 10% — thin margin
+        case .comfortable: return 0.20   // 20% — recommended default
+        case .generous:    return 0.35   // 35% — lots of slack
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .tight:       return "minus.circle"
+        case .comfortable: return "equal.circle"
+        case .generous:    return "plus.circle"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .tight:
+            return "Just enough for a typical month with a 10% cushion."
+        case .comfortable:
+            return "Covers a typical month plus a 20% cushion for surprises."
+        case .generous:
+            return "A 35% cushion — extra room for savings or a bad month."
+        }
+    }
+}
+
 // MARK: - Analytics
 struct MonthlyBudgetAdvisor {
     let bills: [Bill]
@@ -28,19 +65,26 @@ struct MonthlyBudgetAdvisor {
         let startDate: Date
         let endDate: Date
         let monthlyTotals: [MonthlyTotal]
+
+        // Base statistics (of active months)
         let median: Double
         let mean: Double
         let p75: Double
         let lowest: MonthlyTotal?
         let highest: MonthlyTotal?
-        let recommended: Double
+
+        // Buffer + final
+        let bufferLevel: BudgetBufferLevel
+        let bufferAmount: Double     // absolute currency added
+        let recommended: Double      // base + buffer, rounded up
+
         let categoryBreakdown: [CategoryAverage]
         let committedMonthly: Double
         let variableMonthly: Double
     }
 
     // MARK: - Compute
-    func recommend(windowMonths: Int) -> Recommendation? {
+    func recommend(windowMonths: Int, bufferLevel: BudgetBufferLevel) -> Recommendation? {
         let now = Date()
         let start: Date
 
@@ -80,8 +124,7 @@ struct MonthlyBudgetAdvisor {
             cursor = next
         }
 
-        // 3. Only count months with actual activity — zero months
-        //    would drag the mean down artificially.
+        // 3. Only count months with actual activity.
         let active = monthlyTotals.filter { $0.total > 0 }
         guard !active.isEmpty else { return nil }
 
@@ -120,7 +163,7 @@ struct MonthlyBudgetAdvisor {
             )
         }.sorted { $0.monthlyAverage > $1.monthlyAverage }
 
-        // 5. Committed (recurring) vs variable monthly average
+        // 5. Committed vs variable
         let committedMonthly = inRange
             .filter { $0.isRecurring }
             .reduce(0.0) { $0 + $1.amount } / activeCount
@@ -129,8 +172,11 @@ struct MonthlyBudgetAdvisor {
             .filter { !$0.isRecurring }
             .reduce(0.0) { $0 + $1.amount } / activeCount
 
-        // 6. Headline recommendation: median rounded UP to nearest 500
-        let recommended = (median / 500).rounded(.up) * 500
+        // 6. Buffer + headline recommendation
+        let bufferAmount = median * bufferLevel.percent
+        let basePlusBuffer = median + bufferAmount
+        // Round up to nearest 500 so the number feels like a real target.
+        let recommended = (basePlusBuffer / 500).rounded(.up) * 500
 
         return Recommendation(
             windowMonths: windowMonths,
@@ -143,6 +189,8 @@ struct MonthlyBudgetAdvisor {
             p75: p75,
             lowest: active.min(by: { $0.total < $1.total }),
             highest: active.max(by: { $0.total > $1.total }),
+            bufferLevel: bufferLevel,
+            bufferAmount: recommended - median,   // actual delta after rounding
             recommended: recommended,
             categoryBreakdown: categories,
             committedMonthly: committedMonthly,
@@ -162,7 +210,8 @@ struct BudgetRecommendationCard: View {
     @Query private var allBills: [Bill]
     @Query private var properties: [Property]
 
-   @State private var window: BudgetWindow = .twelve
+    @State private var window: BudgetWindow = .twelve
+    @State private var bufferLevel: BudgetBufferLevel = .comfortable
     @State private var showApplyConfirm = false
     @State private var didApply = false
 
@@ -185,7 +234,10 @@ struct BudgetRecommendationCard: View {
     }
 
     private var recommendation: MonthlyBudgetAdvisor.Recommendation? {
-        MonthlyBudgetAdvisor(bills: allBills).recommend(windowMonths: window.rawValue)
+        MonthlyBudgetAdvisor(bills: allBills).recommend(
+            windowMonths: window.rawValue,
+            bufferLevel: bufferLevel
+        )
     }
 
     private var defaultProperty: Property? {
@@ -195,6 +247,7 @@ struct BudgetRecommendationCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
+            bufferPicker
             if let rec = recommendation {
                 headlineNumber(rec)
                 statsRow(rec)
@@ -219,12 +272,13 @@ struct BudgetRecommendationCard: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let rec = recommendation, let prop = defaultProperty {
-                Text("Set **\(prop.name)**'s monthly budget to **\(CurrencyFormatter.format(rec.recommended, as: currency))**?")
+                Text("Set **\(prop.name)**'s monthly budget to **\(CurrencyFormatter.format(rec.recommended, as: currency))**?\n\nThis includes a \(Int(bufferLevel.percent * 100))% breathing-room cushion (\(CurrencyFormatter.format(rec.bufferAmount, as: currency))) on top of your typical month.")
             } else {
                 Text("Set the recommended amount as the monthly budget?")
             }
         }
-        .onChange(of: window) { _, _ in didApply = false }
+        .onChange(of: window)      { _, _ in didApply = false }
+        .onChange(of: bufferLevel) { _, _ in didApply = false }
     }
 
     // MARK: - Header
@@ -240,7 +294,7 @@ struct BudgetRecommendationCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Recommended Monthly Budget")
                     .font(.system(size: 14, weight: .semibold))
-                Text("Based on your actual bill history")
+                Text("Based on your actual bill history, plus breathing room")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -258,9 +312,47 @@ struct BudgetRecommendationCard: View {
         }
     }
 
+    // MARK: - Buffer Picker
+    private var bufferPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "lungs.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.teal)
+                Text("Breathing room")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text("+\(Int(bufferLevel.percent * 100))%")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.teal)
+            }
+
+            Picker("", selection: $bufferLevel) {
+                ForEach(BudgetBufferLevel.allCases) { level in
+                    Text(level.rawValue).tag(level)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
+            Text(bufferLevel.explanation)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background(Color.teal.opacity(0.06))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.teal.opacity(0.15), lineWidth: 1)
+        )
+    }
+
     // MARK: - Headline
     private func headlineNumber(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
+            // Big number
             Text(CurrencyFormatter.format(rec.recommended, as: currency))
                 .font(.system(size: 36, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
@@ -268,7 +360,52 @@ struct BudgetRecommendationCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
 
-            Text("Suggested ceiling — median rounded up to the nearest 500")
+            // Breakdown of base + buffer
+            HStack(spacing: 8) {
+                // Base
+                HStack(spacing: 5) {
+                    Circle().fill(Color.blue).frame(width: 6, height: 6)
+                    Text("Base \(CurrencyFormatter.format(rec.median, as: currency))")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.blue)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(6)
+
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+
+                // Buffer
+                HStack(spacing: 5) {
+                    Circle().fill(Color.teal).frame(width: 6, height: 6)
+                    Text("Buffer \(CurrencyFormatter.format(rec.bufferAmount, as: currency))")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.teal)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.teal.opacity(0.1))
+                .cornerRadius(6)
+
+                Image(systemName: "equal")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+
+                // Total
+                Text(CurrencyFormatter.format(rec.recommended, as: currency))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.green.opacity(0.12))
+                    .cornerRadius(6)
+            }
+
+            // Explanation line
+            Text(headlineExplanation(rec))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
@@ -287,22 +424,34 @@ struct BudgetRecommendationCard: View {
         )
     }
 
+    private func headlineExplanation(_ rec: MonthlyBudgetAdvisor.Recommendation) -> String {
+        let base = "Your typical month costs around \(CurrencyFormatter.format(rec.median, as: currency))."
+        switch bufferLevel {
+        case .tight:
+            return base + " Adding a small 10% cushion."
+        case .comfortable:
+            return base + " Adding a comfortable 20% cushion so there's room left after paying bills."
+        case .generous:
+            return base + " Adding a generous 35% cushion for savings or an unexpected month."
+        }
+    }
+
     // MARK: - Stats Row
     private func statsRow(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
         HStack(spacing: 10) {
             AdvisorStat(
-                title: "Median",
+                title: "Typical",
                 value: CurrencyFormatter.format(rec.median, as: currency),
                 subtitle: "\(rec.activeMonths) active months",
                 icon: "chart.line.uptrend.xyaxis",
                 color: .blue
             )
             AdvisorStat(
-                title: "Average",
-                value: CurrencyFormatter.format(rec.mean, as: currency),
-                subtitle: "simple mean",
-                icon: "equal.circle.fill",
-                color: .purple
+                title: "Buffer",
+                value: "+\(Int(bufferLevel.percent * 100))%",
+                subtitle: CurrencyFormatter.format(rec.bufferAmount, as: currency),
+                icon: "lungs.fill",
+                color: .teal
             )
             AdvisorStat(
                 title: "Peak month",
@@ -328,13 +477,37 @@ struct BudgetRecommendationCard: View {
                 Text("Month-by-month spend")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
-                Text("Suggested line: \(CurrencyFormatter.format(rec.recommended, as: currency))")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                HStack(spacing: 10) {
+                    legend(color: .green, label: "Recommended")
+                    legend(color: .blue,   label: "Base")
+                }
             }
 
             Chart {
+                // Base line (median)
+                RuleMark(
+                    y: .value("Base", CurrencyFormatter.convert(rec.median, to: currency))
+                )
+                .foregroundStyle(Color.blue.opacity(0.7))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .annotation(position: .top, alignment: .leading) {
+                    Text("Base")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+
+                // Recommended line
+                RuleMark(
+                    y: .value("Recommended", CurrencyFormatter.convert(rec.recommended, to: currency))
+                )
+                .foregroundStyle(Color.green)
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                .annotation(position: .top, alignment: .trailing) {
+                    Text("Recommended")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.green)
+                }
+
                 ForEach(rec.monthlyTotals) { point in
                     BarMark(
                         x: .value("Month", point.date),
@@ -344,20 +517,11 @@ struct BudgetRecommendationCard: View {
                     .foregroundStyle(
                         point.total > rec.recommended
                             ? Color.red.gradient
-                            : Color.blue.gradient
+                            : point.total > rec.median
+                                ? Color.orange.gradient
+                                : Color.blue.gradient
                     )
                     .cornerRadius(3)
-                }
-
-                RuleMark(
-                    y: .value("Suggested", CurrencyFormatter.convert(rec.recommended, to: currency))
-                )
-                .foregroundStyle(Color.green)
-                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                .annotation(position: .top, alignment: .trailing) {
-                    Text("Suggested")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.green)
                 }
             }
             .chartXAxis {
@@ -385,7 +549,11 @@ struct BudgetRecommendationCard: View {
                     }
                 }
             }
-            .frame(height: 180)
+            .frame(height: 190)
+
+            Text("Bars above the recommended line are months where you went over budget. Blue = under base, orange = between base and recommended, red = over recommended.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
         }
     }
 

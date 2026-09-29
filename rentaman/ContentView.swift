@@ -18,31 +18,31 @@ struct ContentView: View {
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var syncService
     @Query private var properties: [Property]
-    
+
     @State private var isShowingAddPropertySheet = false
     @State private var isShowingAddBillSheet = false
     @State private var navigation = AppNavigation.shared
-    
+
     @AppStorage(PreferenceKey.displayCurrency) private var currencyRaw: String = AppCurrency.ksh.rawValue
-    
+
     private var currentCurrency: AppCurrency {
         AppCurrency(rawValue: currencyRaw) ?? .ksh
     }
-    
+
     private let trafficLightWidth: CGFloat = 78
     private let headerHeight: CGFloat = 48
-    
+
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
                 // ───── HEADER ─────
                 HStack(spacing: 0) {
                     Spacer().frame(width: trafficLightWidth)
-                    
+
                     RentaManToolbarLeading()
-                    
+
                     Spacer(minLength: 20)
-                    
+
                     HStack(spacing: 10) {
                         RentaManSyncPill()
                         RentaManCurrencyPicker()
@@ -62,7 +62,7 @@ struct ContentView: View {
                         .fill(Color.gray.opacity(0.18))
                         .frame(height: 0.5)
                 }
-                
+
                 // ───── TAB CONTENT ─────
                 Group {
                     switch navigation.selectedTab {
@@ -71,6 +71,9 @@ struct ContentView: View {
                             .environment(\.appCurrency, currentCurrency)
                     case .bills:
                         AllBillsView()
+                            .environment(\.appCurrency, currentCurrency)
+                    case .impact:
+                        BillImpactView()
                             .environment(\.appCurrency, currentCurrency)
                     case .reports:
                         ReportsView()
@@ -89,7 +92,7 @@ struct ContentView: View {
                     Color.clear.frame(height: 82)
                 }
             }
-            
+
             // ───── FLOATING BOTTOM TAB BAR ─────
             RentaManTabBar(selection: $navigation.selectedTab)
         }

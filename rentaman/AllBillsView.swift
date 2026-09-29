@@ -21,7 +21,8 @@ struct AllBillsView: View {
     @State private var filterStatus: FilterStatus = .all
     @State private var selectedPropertyId: String? = nil
     @State private var editingBillWrapper: EditingBillWrapper? = nil
-    @State private var trendWrapper: TrendWrapper? = nil          // 🆕
+    @State private var trendWrapper: TrendWrapper? = nil
+    @State private var showGenerateFuture = false
 
     // ── Cached derived data ──
     @State private var cachedFiltered: [Bill] = []
@@ -60,7 +61,6 @@ struct AllBillsView: View {
         let bill: Bill
     }
 
-    // 🆕
     struct TrendWrapper: Identifiable {
         let id: String
         let bill: Bill
@@ -100,7 +100,7 @@ struct AllBillsView: View {
                         onOpenSheet: { bill in
                             editingBillWrapper = EditingBillWrapper(id: bill.id, bill: bill)
                         },
-                        onOpenTrend: { bill in                                  // 🆕
+                        onOpenTrend: { bill in
                             trendWrapper = TrendWrapper(id: bill.id, bill: bill)
                         }
                     )
@@ -119,11 +119,15 @@ struct AllBillsView: View {
             AddBillView(billToEdit: wrapper.bill)
                 .environment(\.appCurrency, currency)
         }
-        // 🆕 Trend sheet
         .sheet(item: $trendWrapper) { wrapper in
             BillTrendView(initialBill: wrapper.bill)
                 .environment(\.appCurrency, currency)
         }
+        .sheet(isPresented: $showGenerateFuture) {
+            GenerateFutureBillsSheet()
+                .environment(\.appCurrency, currency)
+        }
+        // ── Cache invalidation ──
         .onAppear { recomputeAll() }
         .onChange(of: allBills.count)      { _, _ in recomputeAll() }
         .onChange(of: searchText)          { _, _ in currentPage = 1; recomputeAll() }
@@ -162,6 +166,18 @@ struct AllBillsView: View {
                 SearchField(text: $searchText)
                 PropertyFilterMenu(properties: properties, selection: $selectedPropertyId)
                 StatusSegmentedControl(selection: $filterStatus)
+
+                // 🆕 Generate future recurring bills
+                Button {
+                    showGenerateFuture = true
+                } label: {
+                    Label("Generate", systemImage: "calendar.badge.plus")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .help("Pre-create your recurring bills for the next few months")
+
                 Spacer()
                 if !selection.isEmpty {
                     Button { selection.removeAll() } label: {
@@ -296,7 +312,7 @@ private struct AllBillsTable: View {
     let onDelete: (Set<Bill.ID>) -> Void
     let onMarkPaid: (Set<Bill.ID>, Bool) -> Void
     let onOpenSheet: (Bill) -> Void
-    let onOpenTrend: (Bill) -> Void          // 🆕
+    let onOpenTrend: (Bill) -> Void
 
     var body: some View {
         Table(bills, selection: $selection, sortOrder: $sortOrder) {
@@ -327,6 +343,19 @@ private struct AllBillsTable: View {
                     Text(bill.title)
                         .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
+
+                    // Over-limit pill
+                    if let limit = BillLimits.shared.limit(for: bill.title),
+                       bill.amount > limit {
+                        Text("OVER")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.red.gradient)
+                            .cornerRadius(3)
+                            .help("Exceeds your \(CurrencyFormatter.format(limit, as: currency)) limit")
+                    }
                 }
             }
             .width(min: 150, ideal: 220)
@@ -391,7 +420,6 @@ private struct AllBillsTable: View {
                         .buttonStyle(.borderless)
                         .help("Mark as paid")
                     }
-                    // 🆕 Trend button
                     Button {
                         onOpenTrend(bill)
                     } label: {
@@ -411,7 +439,7 @@ private struct AllBillsTable: View {
                     .help("Edit")
                 }
             }
-            .width(90)          // widened from 60 → 90 to fit the trend button
+            .width(90)
         }
         .contextMenu(forSelectionType: Bill.ID.self) { selectedIds in
             if !selectedIds.isEmpty {
@@ -422,7 +450,6 @@ private struct AllBillsTable: View {
                     }
                 } label: { Label("Edit", systemImage: "square.and.pencil") }
 
-                // 🆕 View Trend (single-selection only)
                 if selectedIds.count == 1,
                    let firstId = selectedIds.first,
                    let bill = allBills.first(where: { $0.id == firstId }) {
@@ -459,7 +486,7 @@ private struct AllBillsTable: View {
     }
 }
 
-// MARK: - Pagination Bar (unchanged)
+// MARK: - Pagination Bar
 struct PaginationBar: View {
     @Binding var currentPage: Int
     @Binding var pageSize: AllBillsView.PageSize
@@ -546,7 +573,7 @@ struct PaginationBar: View {
     }
 }
 
-// MARK: - Search Field (unchanged)
+// MARK: - Search Field
 struct SearchField: View {
     @Binding var text: String
     var body: some View {
@@ -572,7 +599,7 @@ struct SearchField: View {
     }
 }
 
-// MARK: - Property Filter Menu (unchanged)
+// MARK: - Property Filter Menu
 struct PropertyFilterMenu: View {
     let properties: [Property]
     @Binding var selection: String?
@@ -610,7 +637,7 @@ struct PropertyFilterMenu: View {
     }
 }
 
-// MARK: - Status Segmented Control (unchanged)
+// MARK: - Status Segmented Control
 struct StatusSegmentedControl: View {
     @Binding var selection: AllBillsView.FilterStatus
     @Namespace private var namespace

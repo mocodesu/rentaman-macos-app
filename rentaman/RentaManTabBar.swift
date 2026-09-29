@@ -4,29 +4,32 @@ import SwiftUI
 enum AppTab: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case bills = "Bills"
+    case impact = "Impact"
     case reports = "Reports"
     case profile = "Profile"
     case settings = "Settings"
-    
+
     var id: String { rawValue }
-    
+
     var icon: String {
         switch self {
         case .dashboard: return "square.grid.2x2"
-        case .bills: return "list.bullet.rectangle.portrait"
-        case .reports: return "chart.pie"
-        case .profile: return "person.crop.circle"
-        case .settings: return "gearshape"
+        case .bills:     return "list.bullet.rectangle.portrait"
+        case .impact:    return "flame"
+        case .reports:   return "chart.pie"
+        case .profile:   return "person.crop.circle"
+        case .settings:  return "gearshape"
         }
     }
-    
+
     var selectedIcon: String {
         switch self {
         case .dashboard: return "square.grid.2x2.fill"
-        case .bills: return "list.bullet.rectangle.portrait.fill"
-        case .reports: return "chart.pie.fill"
-        case .profile: return "person.crop.circle.fill"
-        case .settings: return "gearshape.fill"
+        case .bills:     return "list.bullet.rectangle.portrait.fill"
+        case .impact:    return "flame.fill"
+        case .reports:   return "chart.pie.fill"
+        case .profile:   return "person.crop.circle.fill"
+        case .settings:  return "gearshape.fill"
         }
     }
 }
@@ -42,7 +45,7 @@ final class AppNavigation {
 // MARK: - Native Bottom Tab Bar
 struct RentaManTabBar: View {
     @Binding var selection: AppTab
-    
+
     var body: some View {
         HStack(spacing: 2) {
             ForEach(AppTab.allCases) { tab in
@@ -76,9 +79,9 @@ private struct NativeTabButton: View {
     let tab: AppTab
     let isSelected: Bool
     let action: () -> Void
-    
+
     @State private var isHovered = false
-    
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 3) {
@@ -86,7 +89,7 @@ private struct NativeTabButton: View {
                     .font(.system(size: 16, weight: .regular))
                     .symbolRenderingMode(.hierarchical)
                     .frame(height: 18)
-                
+
                 Text(tab.rawValue)
                     .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
                     .lineLimit(1)

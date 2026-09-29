@@ -7,33 +7,33 @@ struct DashboardView: View {
     @Environment(SyncService.self) private var syncService
     @Query private var properties: [Property]
     @Query private var allBills: [Bill]
-    
+
     @State private var selectedPropertyId: String? = nil
     @State private var lastRefreshCheck: Date = Date()
-    
+
     private var filteredBills: [Bill] {
         if let selectedId = selectedPropertyId {
             return allBills.filter { $0.property?.id == selectedId }
         }
         return allBills
     }
-    
+
     private var filteredProperties: [Property] {
         if let selectedId = selectedPropertyId {
             return properties.filter { $0.id == selectedId }
         }
         return properties
     }
-    
+
     private var analytics: DashboardAnalytics {
         DashboardAnalytics(bills: filteredBills, properties: filteredProperties)
     }
-    
+
     private let kpiColumns: [GridItem] = Array(
         repeating: GridItem(.flexible(), spacing: 14),
         count: 4
     )
-    
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -44,15 +44,15 @@ struct DashboardView: View {
                         title: "Dashboard",
                         subtitle: "\(filteredBills.count) bill\(filteredBills.count == 1 ? "" : "s") tracked"
                     )
-                    
+
                     Spacer()
-                    
+
                     liveFreshnessIndicator
-                    
+
                     propertyFilter
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Hero KPIs
                 LazyVGrid(columns: kpiColumns, spacing: 14) {
                     HeroKPICard(
@@ -67,7 +67,7 @@ struct DashboardView: View {
                         ),
                         iconAccent: .red
                     )
-                    
+
                     HeroKPICard(
                         title: "Upcoming",
                         value: "\(analytics.upcomingBills.count)",
@@ -80,7 +80,7 @@ struct DashboardView: View {
                         ),
                         iconAccent: .orange
                     )
-                    
+
                     HeroKPICard(
                         title: "Spent This Month",
                         value: CurrencyFormatter.format(analytics.totalSpentThisMonth, as: currency),
@@ -93,11 +93,11 @@ struct DashboardView: View {
                         ),
                         iconAccent: .blue
                     )
-                    
+
                     HeroKPICard(
                         title: "Anomalies",
-                        value: "\(analytics.anomalies.count)",
-                        subtitle: analytics.anomalies.isEmpty ? "No issues detected" : "Unusually high bills",
+                        value: "\(analytics.anomalyReports.count)",
+                        subtitle: analytics.anomalySubtitle,
                         icon: "bell.badge.fill",
                         gradient: LinearGradient(
                             colors: [Color(red: 0.62, green: 0.28, blue: 0.95),
@@ -108,7 +108,7 @@ struct DashboardView: View {
                     )
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Budget Progress
                 if analytics.totalBudget > 0 {
                     BudgetProgressCard(
@@ -119,7 +119,7 @@ struct DashboardView: View {
                     )
                     .padding(.horizontal, 24)
                 }
-                
+
                 // MARK: - Charts Row
                 HStack(alignment: .top, spacing: 14) {
                     RMContentCard(
@@ -152,14 +152,14 @@ struct DashboardView: View {
                             .frame(height: 260)
                         }
                     }
-                    
+
                     RMContentCard(
                         title: "Recent Anomalies",
                         icon: "bell.badge.fill",
                         iconColor: .purple,
-                        subtitle: "Unusual spending patterns"
+                        subtitle: anomaliesCardSubtitle
                     ) {
-                        if analytics.anomalies.isEmpty {
+                        if analytics.anomalyReports.isEmpty {
                             SmallEmptyState(
                                 icon: "checkmark.seal.fill",
                                 message: "All bills look normal",
@@ -167,8 +167,8 @@ struct DashboardView: View {
                             )
                         } else {
                             VStack(spacing: 8) {
-                                ForEach(analytics.anomalies.prefix(4)) { bill in
-                                    AnomalyRow(bill: bill, currency: currency)
+                                ForEach(analytics.anomalyReports.prefix(4)) { anomaly in
+                                    AnomalyRow(anomaly: anomaly, currency: currency)
                                 }
                             }
                         }
@@ -176,7 +176,7 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal, 24)
                 .frame(maxHeight: 400)
-                
+
                 // MARK: - Action Center
                 RMContentCard(
                     title: "Action Center",
@@ -210,7 +210,7 @@ struct DashboardView: View {
                                 }
                                 .padding(.horizontal, 4)
                                 .padding(.bottom, 2)
-                                
+
                                 ForEach(analytics.overdueBills.prefix(3)) { bill in
                                     UnpaidBillRow(
                                         bill: bill,
@@ -219,14 +219,14 @@ struct DashboardView: View {
                                     )
                                 }
                             }
-                            
+
                             // Regular unpaid section
                             let nonOverdue = analytics.unpaidBills.filter { $0.dueDate >= Date() }
                             if !nonOverdue.isEmpty {
                                 if !analytics.overdueBills.isEmpty {
                                     Divider().padding(.vertical, 4)
                                 }
-                                
+
                                 HStack {
                                     Text("Upcoming")
                                         .font(.system(size: 10, weight: .bold))
@@ -243,7 +243,7 @@ struct DashboardView: View {
                                 }
                                 .padding(.horizontal, 4)
                                 .padding(.bottom, 2)
-                                
+
                                 ForEach(nonOverdue.prefix(5)) { bill in
                                     UnpaidBillRow(
                                         bill: bill,
@@ -260,15 +260,13 @@ struct DashboardView: View {
             .padding(.vertical, 24)
         }
         .background(RMDesign.pageBackground)
-        // MARK: - Auto-refresh
         .task {
-            // Trigger a sync when the dashboard appears so we have latest data
             if syncService.state.isLive || syncService.state.isIdle {
                 await syncService.forceSync()
             }
         }
     }
-    
+
     // MARK: - Live Freshness Indicator
     private var liveFreshnessIndicator: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -276,7 +274,7 @@ struct DashboardView: View {
                 Circle()
                     .fill(freshnessColor)
                     .frame(width: 6, height: 6)
-                
+
                 Text(freshnessText(at: context.date))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -292,7 +290,7 @@ struct DashboardView: View {
             .help("Data updates automatically as bills sync")
         }
     }
-    
+
     private var freshnessColor: Color {
         guard let last = syncService.lastSyncAt else { return .gray }
         let secondsAgo = Date().timeIntervalSince(last)
@@ -300,7 +298,7 @@ struct DashboardView: View {
         if secondsAgo < 600 { return .orange }
         return .red
     }
-    
+
     private func freshnessText(at date: Date) -> String {
         guard let last = syncService.lastSyncAt else { return "Never synced" }
         let seconds = max(0, Int(date.timeIntervalSince(last)))
@@ -312,7 +310,7 @@ struct DashboardView: View {
         if hours < 24 { return "\(hours)h ago" }
         return "\(hours / 24)d ago"
     }
-    
+
     // MARK: - Sub-computations
     private var upcomingSubtitle: String {
         if analytics.upcomingBills.isEmpty && analytics.overdueBills.isEmpty {
@@ -323,13 +321,22 @@ struct DashboardView: View {
         }
         return "Bills due within 7 days"
     }
-    
+
     private var actionCenterSubtitle: String {
         let total = analytics.unpaidBills.count
         if total == 0 { return "Nothing to pay" }
         return "\(total) bill\(total == 1 ? "" : "s") waiting to be paid"
     }
-    
+
+    private var anomaliesCardSubtitle: String {
+        guard !analytics.anomalyReports.isEmpty else { return "All bills look normal" }
+        let overLimit = analytics.anomalyReports.filter { $0.kind.isOverLimit }.count
+        if overLimit > 0 {
+            return "\(overLimit) over limit · top \(min(4, analytics.anomalyReports.count)) shown"
+        }
+        return "Unusual spending patterns"
+    }
+
     // MARK: - Actions
     private func markBillAsPaid(_ bill: Bill) {
         bill.isPaid = true
@@ -338,7 +345,7 @@ struct DashboardView: View {
         bill.updatedAt = Date()
         SyncService.shared.schedulePush()
     }
-    
+
     // MARK: - Property Filter
     private var propertyFilter: some View {
         Menu {
@@ -349,7 +356,7 @@ struct DashboardView: View {
             } label: {
                 Label("All Properties", systemImage: selectedPropertyId == nil ? "checkmark" : "")
             }
-            
+
             if !properties.isEmpty {
                 Divider()
                 ForEach(properties) { property in
@@ -387,7 +394,7 @@ struct DashboardView: View {
         .menuIndicator(.hidden)
         .fixedSize()
     }
-    
+
     private var selectedPropertyLabel: String {
         if let id = selectedPropertyId,
            let prop = properties.first(where: { $0.id == id }) {
@@ -403,22 +410,22 @@ struct BudgetProgressCard: View {
     let budget: Double
     let progress: Double
     let currency: AppCurrency
-    
+
     private var isOverBudget: Bool { progress >= 1.0 }
     private var isWarning: Bool { progress >= 0.8 && progress < 1.0 }
-    
+
     private var statusColor: Color {
         if isOverBudget { return .red }
         if isWarning { return .orange }
         return .green
     }
-    
+
     private var statusText: String {
         if isOverBudget { return "Over budget" }
         if isWarning { return "Approaching limit" }
         return "On track"
     }
-    
+
     var body: some View {
         VStack(spacing: 14) {
             HStack {
@@ -429,7 +436,7 @@ struct BudgetProgressCard: View {
                         .frame(width: 30, height: 30)
                         .background(statusColor.gradient)
                         .cornerRadius(9)
-                    
+
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Monthly Budget")
                             .font(.system(size: 13, weight: .semibold))
@@ -438,9 +445,9 @@ struct BudgetProgressCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Spacer()
-                
+
                 Text(statusText)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(statusColor)
@@ -449,13 +456,13 @@ struct BudgetProgressCard: View {
                     .background(statusColor.opacity(0.12))
                     .cornerRadius(RMDesign.pillRadius)
             }
-            
+
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.gray.opacity(0.12))
                         .frame(height: 8)
-                    
+
                     Capsule()
                         .fill(statusColor.gradient)
                         .frame(width: geo.size.width * progress, height: 8)
@@ -473,41 +480,97 @@ struct BudgetProgressCard: View {
     }
 }
 
-// MARK: - Anomaly Row
 struct AnomalyRow: View {
-    let bill: Bill
+    let anomaly: Anomaly
     let currency: AppCurrency
-    
+
     @State private var isHovered = false
-    
+
+    private var bill: Bill { anomaly.bill }
+
+    private var isOverLimit: Bool { anomaly.kind.isOverLimit }
+
+    private var badgeText: String {
+        switch anomaly.kind {
+        case .overLimit(let limit, _):
+            return "Over \(CurrencyFormatter.format(limit, as: currency))"
+        case .categoryOutlier(_, let ratio):
+            return String(format: "%.1f× avg", ratio)
+        }
+    }
+
+    private var detailText: String {
+        switch anomaly.kind {
+        case .overLimit(_, let overBy):
+            return "Over limit by \(CurrencyFormatter.format(overBy, as: currency))"
+        case .categoryOutlier(let avg, _):
+            return "Typical: \(CurrencyFormatter.format(avg, as: currency))"
+        }
+    }
+
+    private var amountColor: Color {
+        isOverLimit ? .red : .orange
+    }
+
+    private var accentColor: Color {
+        isOverLimit ? .red : .purple
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: bill.category.iconName)
+            // Icon — red alert for over-limit, category icon for outliers
+            Image(systemName: isOverLimit ? "exclamationmark.octagon.fill" : bill.category.iconName)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(bill.category.color)
+                .foregroundStyle(isOverLimit ? AnyShapeStyle(Color.white) : AnyShapeStyle(accentColor))
                 .frame(width: 28, height: 28)
-                .background(bill.category.color.opacity(0.12))
+                .background(
+                    isOverLimit
+                        ? AnyShapeStyle(Color.red.gradient)
+                        : AnyShapeStyle(accentColor.opacity(0.12))
+                )
                 .cornerRadius(8)
-            
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(bill.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                Text(bill.property?.name ?? "Unknown")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(bill.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+
+                    Text(badgeText)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(accentColor.gradient)
+                        .cornerRadius(4)
+                }
+
+                HStack(spacing: 6) {
+                    Text(bill.property?.name ?? "Unknown")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Text("•")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+
+                    Text(detailText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(accentColor.opacity(0.9))
+                        .lineLimit(1)
+                }
             }
-            
+
             Spacer()
-            
+
             Text(CurrencyFormatter.format(bill.amount, as: currency))
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.red)
+                .foregroundStyle(amountColor)
                 .monospacedDigit()
         }
         .padding(10)
-        .background(isHovered ? Color.purple.opacity(0.05) : Color.clear)
+        .background(isHovered ? accentColor.opacity(0.05) : Color.clear)
         .cornerRadius(8)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) {
@@ -516,23 +579,22 @@ struct AnomalyRow: View {
         }
     }
 }
-
 // MARK: - Unpaid Bill Row
 struct UnpaidBillRow: View {
     let bill: Bill
     let currency: AppCurrency
     let onMarkPaid: () -> Void
-    
+
     @State private var isHovered = false
-    
+
     private var isOverdue: Bool {
         !bill.isPaid && bill.dueDate < Date()
     }
-    
+
     private var daysUntilDue: Int {
         Calendar.current.dateComponents([.day], from: Date(), to: bill.dueDate).day ?? 0
     }
-    
+
     private var dueText: String {
         if isOverdue {
             let days = abs(daysUntilDue)
@@ -542,47 +604,64 @@ struct UnpaidBillRow: View {
         if daysUntilDue == 1 { return "Due tomorrow" }
         return "Due in \(daysUntilDue)d"
     }
-    
+
+    // 🆕 Over-limit awareness
+    private var isOverLimit: Bool {
+        guard let limit = BillLimits.shared.limit(for: bill.title) else { return false }
+        return bill.amount > limit
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(isOverdue ? Color.red : Color.orange)
+                .fill(isOverdue ? Color.red : (isOverLimit ? Color.orange : Color.blue))
                 .frame(width: 8, height: 8)
-            
+
             Image(systemName: bill.category.iconName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(bill.category.color)
                 .frame(width: 30, height: 30)
                 .background(bill.category.color.opacity(0.12))
                 .cornerRadius(8)
-            
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(bill.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                
+                HStack(spacing: 6) {
+                    Text(bill.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                    if isOverLimit {
+                        Text("OVER")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.red.gradient)
+                            .cornerRadius(3)
+                    }
+                }
+
                 HStack(spacing: 6) {
                     Text(bill.property?.name ?? "Unknown")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    
+
                     Text("•")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
-                    
+
                     Text(dueText)
                         .font(.system(size: 10, weight: isOverdue ? .semibold : .regular))
                         .foregroundStyle(isOverdue ? .red : .secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             Text(CurrencyFormatter.format(bill.amount, as: currency))
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-            
+
             Button(action: onMarkPaid) {
                 Label("Pay", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 12, weight: .medium))
@@ -610,7 +689,7 @@ struct SmallEmptyState: View {
     let icon: String
     let message: String
     var color: Color = .secondary
-    
+
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
