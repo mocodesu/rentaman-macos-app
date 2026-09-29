@@ -16,11 +16,11 @@ extension EnvironmentValues {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var auth
+    @Environment(SyncService.self) private var syncService
     @Query private var properties: [Property]
     
     @State private var isShowingAddPropertySheet = false
     @State private var isShowingAddBillSheet = false
-    @State private var syncService = SyncService.shared
     @State private var navigation = AppNavigation.shared
     
     @AppStorage(PreferenceKey.displayCurrency) private var currencyRaw: String = AppCurrency.ksh.rawValue
@@ -40,17 +40,12 @@ struct ContentView: View {
                     Spacer().frame(width: trafficLightWidth)
                     
                     RentaManToolbarLeading()
-                        .environment(auth)
                     
                     Spacer(minLength: 20)
                     
                     HStack(spacing: 10) {
                         RentaManSyncPill()
-                            .environment(syncService)
-                            .environment(auth)
-                        
                         RentaManCurrencyPicker()
-                        
                         RentaManAddBillButton {
                             isShowingAddBillSheet = true
                         }
@@ -82,18 +77,14 @@ struct ContentView: View {
                             .environment(\.appCurrency, currentCurrency)
                     case .profile:
                         ProfileView()
-                            .environment(syncService)
                             .environment(\.appCurrency, currentCurrency)
                     case .settings:
                         SettingsTabView()
-                            .environment(auth)
-                            .environment(syncService)
                             .environment(\.appCurrency, currentCurrency)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.opacity)
-                // Reserve space for the floating bottom tab bar
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     Color.clear.frame(height: 82)
                 }

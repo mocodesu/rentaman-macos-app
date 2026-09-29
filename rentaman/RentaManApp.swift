@@ -4,7 +4,6 @@ import SwiftData
 @main
 struct RentaManApp: App {
     let container: ModelContainer
-    
     @State private var auth = AuthService.shared
     
     init() {
@@ -20,27 +19,31 @@ struct RentaManApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .frame(minWidth: 1000, minHeight: 700)
+                .frame(minWidth: 900, minHeight: 600)
                 .environment(auth)
+                .environment(SyncService.shared)
                 .modelContainer(container)
                 .onAppear {
                     SyncService.shared.configure(modelContext: container.mainContext)
-                    auth.bootstrap()
+                    auth.bootstrap()           
+}
                 }
-        }
+                .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
         
         Settings {
-    SettingsRootView()
-        .environment(auth)
-        .modelContainer(container)
-}
+            SettingsRootView()
+                .environment(auth)
+                .environment(SyncService.shared)
+                .modelContainer(container)
+        }
     }
 }
 
 // MARK: - Root View (Onboarding → Auth → App)
 struct RootView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(SyncService.self) private var syncService
     @Environment(\.modelContext) private var modelContext
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
@@ -71,5 +74,3 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.2), value: auth.state)
     }
 }
-
- 

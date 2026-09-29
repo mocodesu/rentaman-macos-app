@@ -4,6 +4,7 @@ import Charts
 
 struct ReportsView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
+    @Environment(SyncService.self) private var syncService
     @Query private var allBills: [Bill]
     @Query private var properties: [Property]
     
@@ -27,9 +28,10 @@ struct ReportsView: View {
         ReportsAnalytics(bills: filteredBills, properties: filteredProperties)
     }
     
-    private var kpiColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 14), count: 4)
-    }
+    private let kpiColumns: [GridItem] = Array(
+        repeating: GridItem(.flexible(), spacing: 14),
+        count: 4
+    )
     
     var body: some View {
         ScrollView {
@@ -39,10 +41,12 @@ struct ReportsView: View {
                     RMPageHeader(
                         icon: "chart.pie.fill",
                         title: "Reports & Analytics",
-                        subtitle: "Insights into your spending patterns"
+                        subtitle: "\(analytics.totalBillsThisYear) bill\(analytics.totalBillsThisYear == 1 ? "" : "s") this year"
                     )
                     
                     Spacer()
+                    
+                    liveFreshnessIndicator
                     
                     PropertyFilterMenu(
                         properties: properties,
@@ -69,7 +73,7 @@ struct ReportsView: View {
                     HeroKPICard(
                         title: "This Month",
                         value: CurrencyFormatter.format(analytics.totalSpentThisMonth, as: currency),
-                        subtitle: "Current month",
+                        subtitle: analytics.thisMonthLabel,
                         icon: "calendar",
                         gradient: LinearGradient(
                             colors: [Color(red: 0.15, green: 0.75, blue: 0.55),
@@ -113,6 +117,16 @@ struct ReportsView: View {
                 }
                 .padding(.horizontal, 24)
                 
+                // MARK: - Payment Rate Strip
+                if analytics.totalBillsThisYear > 0 {
+                    PaymentRateStrip(
+                        paid: analytics.paidBillsThisYear,
+                        unpaid: analytics.unpaidBillsThisYear,
+                        rate: analytics.paymentRate
+                    )
+                    .padding(.horizontal, 24)
+                }
+                
                 // MARK: - Monthly Trend
                 RMContentCard(
                     title: "Monthly Spending Trend",
@@ -123,7 +137,7 @@ struct ReportsView: View {
                     if analytics.monthlyTrend.allSatisfy({ $0.amount == 0 }) {
                         SmallEmptyState(
                             icon: "chart.line.uptrend.xyaxis",
-                            message: "No spending data yet"
+                            message: "No spending data for the last 12 months"
                         )
                     } else {
                         Chart(analytics.monthlyTrend) { point in
@@ -206,7 +220,7 @@ struct ReportsView: View {
                         iconColor: .green,
                         subtitle: "Current year"
                     ) {
-                        if analytics.propertyComparison.isEmpty {
+                        if analytics.propertyComparison.isEmpty || analytics.propertyComparison.allSatisfy({ $0.amount == 0 }) {
                             SmallEmptyState(
                                 icon: "house",
                                 message: "No property data yet"
@@ -231,7 +245,7 @@ struct ReportsView: View {
                     title: "Budget vs Actual",
                     icon: "gauge.medium",
                     iconColor: .purple,
-                    subtitle: "Current month"
+                    subtitle: analytics.budgetVsActualLabel
                 ) {
                     if analytics.budgetVsActual.isEmpty || analytics.budgetVsActual.allSatisfy({ $0.budget == 0 }) {
                         SmallEmptyState(
@@ -295,6 +309,103 @@ struct ReportsView: View {
             .padding(.vertical, 24)
         }
         .background(RMDesign.pageBackground)
+        .task {
+            if syncService.state.isLive || syncService.state.isIdle {
+                await syncService.forceSync()
+            }
+        }
+    }
+    
+    // MARK: - Live Freshness Indicator
+    private var liveFreshnessIndicator: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(freshnessColor)
+                    .frame(width: 6, height: 6)
+                
+                Text(freshnessText(at: context.date))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(Color.gray.opacity(0.08))
+                    .overlay(Capsule().stroke(Color.gray.opacity(0.12), lineWidth: 0.75))
+            )
+            .help("Reports update automatically as data syncs")
+        }
+    }
+    
+    private var freshnessColor: Color {
+        guard let last = syncService.lastSyncAt else { return .gray }
+        let secondsAgo = Date().timeIntervalSince(last)
+        if secondsAgo < 60 { return .green }
+        if secondsAgo < 600 { return .orange }
+        return .red
+    }
+    
+    private func freshnessText(at date: Date) -> String {
+        guard let last = syncService.lastSyncAt else { return "Never synced" }
+        let seconds = max(0, Int(date.timeIntervalSince(last)))
+        if seconds < 5 { return "Just now" }
+        if seconds < 60 { return "\(seconds)s ago" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        return "\(hours / 24)d ago"
+    }
+}
+
+// MARK: - Payment Rate Strip
+struct PaymentRateStrip: View {
+    let paid: Int
+    let unpaid: Int
+    let rate: Double
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Payment Progress")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("\(paid) paid · \(unpaid) unpaid")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.red.opacity(0.2))
+                        .frame(height: 8)
+                    
+                    Capsule()
+                        .fill(Color.green.gradient)
+                        .frame(width: geo.size.width * rate, height: 8)
+                }
+            }
+            .frame(height: 8)
+            .frame(maxWidth: 200)
+            
+            Text("\(Int(rate * 100))%")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(rate > 0.8 ? .green : rate > 0.5 ? .orange : .red)
+                .frame(width: 44, alignment: .trailing)
+        }
+        .padding(16)
+        .background(RMDesign.cardBackground)
+        .cornerRadius(RMDesign.cardRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 
@@ -319,7 +430,6 @@ struct TopExpenseRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                // Rank badge
                 ZStack {
                     Circle()
                         .fill(rank <= 3 ? rankColor.opacity(0.15) : Color.gray.opacity(0.08))
@@ -329,7 +439,6 @@ struct TopExpenseRow: View {
                         .foregroundStyle(rank <= 3 ? rankColor : .secondary)
                 }
                 
-                // Category icon
                 Image(systemName: bill.category.iconName)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(bill.category.color)
@@ -337,7 +446,6 @@ struct TopExpenseRow: View {
                     .background(bill.category.color.opacity(0.12))
                     .cornerRadius(8)
                 
-                // Info
                 VStack(alignment: .leading, spacing: 3) {
                     Text(bill.title)
                         .font(.system(size: 13, weight: .medium))
@@ -360,12 +468,10 @@ struct TopExpenseRow: View {
                 
                 Spacer()
                 
-                // Due date
                 Text(bill.dueDate.formatted(date: .abbreviated, time: .omitted))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 
-                // Amount
                 Text(CurrencyFormatter.format(bill.amount, as: currency))
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()

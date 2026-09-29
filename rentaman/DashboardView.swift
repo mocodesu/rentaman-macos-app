@@ -4,10 +4,12 @@ import Charts
 
 struct DashboardView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
+    @Environment(SyncService.self) private var syncService
     @Query private var properties: [Property]
     @Query private var allBills: [Bill]
     
     @State private var selectedPropertyId: String? = nil
+    @State private var lastRefreshCheck: Date = Date()
     
     private var filteredBills: [Bill] {
         if let selectedId = selectedPropertyId {
@@ -16,39 +18,36 @@ struct DashboardView: View {
         return allBills
     }
     
-    private var analytics: DashboardAnalytics {
-        DashboardAnalytics(bills: filteredBills)
-    }
-    
-    private var totalBudget: Double {
-        if let selectedId = selectedPropertyId,
-           let prop = properties.first(where: { $0.id == selectedId }) {
-            return prop.monthlyBudget
+    private var filteredProperties: [Property] {
+        if let selectedId = selectedPropertyId {
+            return properties.filter { $0.id == selectedId }
         }
-        return properties.reduce(0.0) { $0 + $1.monthlyBudget }
+        return properties
     }
     
-    private var budgetProgress: Double {
-        guard totalBudget > 0 else { return 0 }
-        return min(analytics.totalSpentThisMonth / totalBudget, 1.0)
+    private var analytics: DashboardAnalytics {
+        DashboardAnalytics(bills: filteredBills, properties: filteredProperties)
     }
     
-    private var kpiColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 14), count: 4)
-    }
+    private let kpiColumns: [GridItem] = Array(
+        repeating: GridItem(.flexible(), spacing: 14),
+        count: 4
+    )
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // MARK: - Page Header
+                // MARK: - Page Header + Live Freshness
                 HStack(alignment: .center) {
                     RMPageHeader(
                         icon: "square.grid.2x2.fill",
                         title: "Dashboard",
-                        subtitle: "Overview of your bills and spending"
+                        subtitle: "\(filteredBills.count) bill\(filteredBills.count == 1 ? "" : "s") tracked"
                     )
                     
                     Spacer()
+                    
+                    liveFreshnessIndicator
                     
                     propertyFilter
                 }
@@ -72,7 +71,7 @@ struct DashboardView: View {
                     HeroKPICard(
                         title: "Upcoming",
                         value: "\(analytics.upcomingBills.count)",
-                        subtitle: "Bills due within 7 days",
+                        subtitle: upcomingSubtitle,
                         icon: "clock.fill",
                         gradient: LinearGradient(
                             colors: [Color(red: 0.98, green: 0.62, blue: 0.15),
@@ -85,7 +84,7 @@ struct DashboardView: View {
                     HeroKPICard(
                         title: "Spent This Month",
                         value: CurrencyFormatter.format(analytics.totalSpentThisMonth, as: currency),
-                        subtitle: totalBudget > 0 ? "Budget: \(CurrencyFormatter.format(totalBudget, as: currency))" : "No budget set",
+                        subtitle: analytics.spentThisMonthLabel,
                         icon: "chart.pie.fill",
                         gradient: LinearGradient(
                             colors: [Color(red: 0.28, green: 0.55, blue: 0.98),
@@ -110,12 +109,12 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal, 24)
                 
-                // MARK: - Budget Progress (if set)
-                if totalBudget > 0 {
+                // MARK: - Budget Progress
+                if analytics.totalBudget > 0 {
                     BudgetProgressCard(
                         spent: analytics.totalSpentThisMonth,
-                        budget: totalBudget,
-                        progress: budgetProgress,
+                        budget: analytics.totalBudget,
+                        progress: analytics.budgetProgress,
                         currency: currency
                     )
                     .padding(.horizontal, 24)
@@ -123,18 +122,14 @@ struct DashboardView: View {
                 
                 // MARK: - Charts Row
                 HStack(alignment: .top, spacing: 14) {
-                    // Category Pie Chart
                     RMContentCard(
                         title: "Expenses by Category",
                         icon: "chart.pie.fill",
                         iconColor: .blue,
-                        subtitle: "Current month"
+                        subtitle: analytics.spentThisMonthLabel
                     ) {
-                        if analytics.expensesByCategory.isEmpty || analytics.totalSpentThisMonth <= 0 {
-                            SmallEmptyState(
-                                icon: "chart.pie",
-                                message: "No expenses this month"
-                            )
+                        if analytics.expensesByCategory.isEmpty || analytics.totalForCategoryChart <= 0 {
+                            SmallEmptyState(icon: "chart.pie", message: "No expenses recorded")
                         } else {
                             Chart(analytics.expensesByCategory) { item in
                                 SectorMark(
@@ -145,7 +140,7 @@ struct DashboardView: View {
                                 .foregroundStyle(item.color.gradient)
                                 .cornerRadius(4)
                                 .annotation(position: .overlay) {
-                                    let share = item.amount / analytics.totalSpentThisMonth
+                                    let share = item.amount / analytics.totalForCategoryChart
                                     if share.isFinite && share > 0.15 {
                                         Text("\(Int(share * 100))%")
                                             .font(.system(size: 11, weight: .bold))
@@ -158,7 +153,6 @@ struct DashboardView: View {
                         }
                     }
                     
-                    // Anomalies List
                     RMContentCard(
                         title: "Recent Anomalies",
                         icon: "bell.badge.fill",
@@ -188,7 +182,7 @@ struct DashboardView: View {
                     title: "Action Center",
                     icon: "list.bullet.circle.fill",
                     iconColor: .red,
-                    subtitle: "Bills waiting to be paid"
+                    subtitle: actionCenterSubtitle
                 ) {
                     if analytics.unpaidBills.isEmpty {
                         SmallEmptyState(
@@ -198,26 +192,65 @@ struct DashboardView: View {
                         )
                     } else {
                         VStack(spacing: 6) {
-                            ForEach(analytics.unpaidBills.prefix(6)) { bill in
-                                UnpaidBillRow(
-                                    bill: bill,
-                                    currency: currency,
-                                    onMarkPaid: {
-                                        bill.isPaid = true
-                                        bill.paymentDate = Date()
-                                        bill.syncStatus = .pendingUpload
-                                        bill.updatedAt = Date()
-                                        SyncService.shared.schedulePush()
-                                    }
-                                )
+                            // Overdue section
+                            if !analytics.overdueBills.isEmpty {
+                                HStack {
+                                    Text("Overdue")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.red)
+                                        .tracking(0.5)
+                                    Spacer()
+                                    Text("\(analytics.overdueBills.count)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.red)
+                                        .clipShape(Capsule())
+                                }
+                                .padding(.horizontal, 4)
+                                .padding(.bottom, 2)
+                                
+                                ForEach(analytics.overdueBills.prefix(3)) { bill in
+                                    UnpaidBillRow(
+                                        bill: bill,
+                                        currency: currency,
+                                        onMarkPaid: { markBillAsPaid(bill) }
+                                    )
+                                }
                             }
                             
-                            if analytics.unpaidBills.count > 6 {
-                                Text("+ \(analytics.unpaidBills.count - 6) more")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 6)
+                            // Regular unpaid section
+                            let nonOverdue = analytics.unpaidBills.filter { $0.dueDate >= Date() }
+                            if !nonOverdue.isEmpty {
+                                if !analytics.overdueBills.isEmpty {
+                                    Divider().padding(.vertical, 4)
+                                }
+                                
+                                HStack {
+                                    Text("Upcoming")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.orange)
+                                        .tracking(0.5)
+                                    Spacer()
+                                    Text("\(nonOverdue.count)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.orange)
+                                        .clipShape(Capsule())
+                                }
+                                .padding(.horizontal, 4)
+                                .padding(.bottom, 2)
+                                
+                                ForEach(nonOverdue.prefix(5)) { bill in
+                                    UnpaidBillRow(
+                                        bill: bill,
+                                        currency: currency,
+                                        onMarkPaid: { markBillAsPaid(bill) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -227,9 +260,86 @@ struct DashboardView: View {
             .padding(.vertical, 24)
         }
         .background(RMDesign.pageBackground)
+        // MARK: - Auto-refresh
+        .task {
+            // Trigger a sync when the dashboard appears so we have latest data
+            if syncService.state.isLive || syncService.state.isIdle {
+                await syncService.forceSync()
+            }
+        }
     }
     
-    // MARK: - Property Filter Picker
+    // MARK: - Live Freshness Indicator
+    private var liveFreshnessIndicator: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(freshnessColor)
+                    .frame(width: 6, height: 6)
+                
+                Text(freshnessText(at: context.date))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(Color.gray.opacity(0.08))
+                    .overlay(Capsule().stroke(Color.gray.opacity(0.12), lineWidth: 0.75))
+            )
+            .help("Data updates automatically as bills sync")
+        }
+    }
+    
+    private var freshnessColor: Color {
+        guard let last = syncService.lastSyncAt else { return .gray }
+        let secondsAgo = Date().timeIntervalSince(last)
+        if secondsAgo < 60 { return .green }
+        if secondsAgo < 600 { return .orange }
+        return .red
+    }
+    
+    private func freshnessText(at date: Date) -> String {
+        guard let last = syncService.lastSyncAt else { return "Never synced" }
+        let seconds = max(0, Int(date.timeIntervalSince(last)))
+        if seconds < 5 { return "Just now" }
+        if seconds < 60 { return "\(seconds)s ago" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        return "\(hours / 24)d ago"
+    }
+    
+    // MARK: - Sub-computations
+    private var upcomingSubtitle: String {
+        if analytics.upcomingBills.isEmpty && analytics.overdueBills.isEmpty {
+            return "Nothing due soon"
+        }
+        if !analytics.overdueBills.isEmpty {
+            return "\(analytics.overdueBills.count) overdue"
+        }
+        return "Bills due within 7 days"
+    }
+    
+    private var actionCenterSubtitle: String {
+        let total = analytics.unpaidBills.count
+        if total == 0 { return "Nothing to pay" }
+        return "\(total) bill\(total == 1 ? "" : "s") waiting to be paid"
+    }
+    
+    // MARK: - Actions
+    private func markBillAsPaid(_ bill: Bill) {
+        bill.isPaid = true
+        bill.paymentDate = Date()
+        bill.syncStatus = .pendingUpload
+        bill.updatedAt = Date()
+        SyncService.shared.schedulePush()
+    }
+    
+    // MARK: - Property Filter
     private var propertyFilter: some View {
         Menu {
             Button {
@@ -242,7 +352,6 @@ struct DashboardView: View {
             
             if !properties.isEmpty {
                 Divider()
-                
                 ForEach(properties) { property in
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
@@ -420,14 +529,26 @@ struct UnpaidBillRow: View {
         !bill.isPaid && bill.dueDate < Date()
     }
     
+    private var daysUntilDue: Int {
+        Calendar.current.dateComponents([.day], from: Date(), to: bill.dueDate).day ?? 0
+    }
+    
+    private var dueText: String {
+        if isOverdue {
+            let days = abs(daysUntilDue)
+            return days == 0 ? "Due today" : "\(days)d overdue"
+        }
+        if daysUntilDue == 0 { return "Due today" }
+        if daysUntilDue == 1 { return "Due tomorrow" }
+        return "Due in \(daysUntilDue)d"
+    }
+    
     var body: some View {
         HStack(spacing: 12) {
-            // Status indicator
             Circle()
                 .fill(isOverdue ? Color.red : Color.orange)
                 .frame(width: 8, height: 8)
             
-            // Category icon
             Image(systemName: bill.category.iconName)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(bill.category.color)
@@ -435,35 +556,33 @@ struct UnpaidBillRow: View {
                 .background(bill.category.color.opacity(0.12))
                 .cornerRadius(8)
             
-            // Title + meta
             VStack(alignment: .leading, spacing: 2) {
                 Text(bill.title)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                 
                 HStack(spacing: 6) {
-                    Text(bill.category.rawValue)
-                        .font(.system(size: 10, weight: .medium))
+                    Text(bill.property?.name ?? "Unknown")
+                        .font(.system(size: 10))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     
                     Text("•")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                     
-                    Text("Due \(bill.dueDate.formatted(date: .abbreviated, time: .omitted))")
-                        .font(.system(size: 10))
+                    Text(dueText)
+                        .font(.system(size: 10, weight: isOverdue ? .semibold : .regular))
                         .foregroundStyle(isOverdue ? .red : .secondary)
                 }
             }
             
             Spacer()
             
-            // Amount
             Text(CurrencyFormatter.format(bill.amount, as: currency))
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .monospacedDigit()
             
-            // Mark Paid button
             Button(action: onMarkPaid) {
                 Label("Pay", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 12, weight: .medium))
@@ -486,7 +605,7 @@ struct UnpaidBillRow: View {
     }
 }
 
-// MARK: - Small Empty State (for cards)
+// MARK: - Small Empty State
 struct SmallEmptyState: View {
     let icon: String
     let message: String
