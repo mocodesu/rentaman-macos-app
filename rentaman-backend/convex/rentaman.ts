@@ -15,9 +15,8 @@ async function requireUser(ctx: QueryCtx, apiKey: string): Promise<string> {
 }
 
 // ──────────────────────────────────────────────────────────────
-//  PROPERTIES
+//  PROPERTIES — single upsert (kept for compatibility)
 // ──────────────────────────────────────────────────────────────
-
 export const upsertProperty = mutation({
   args: {
     apiKey: v.string(),
@@ -31,7 +30,6 @@ export const upsertProperty = mutation({
   },
   handler: async (ctx, args) => {
     const ownerId = await requireUser(ctx, args.apiKey);
-
     const existing = await ctx.db
       .query("properties")
       .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId))
@@ -54,18 +52,19 @@ export const upsertProperty = mutation({
     };
 
     if (existing) {
-      if (args.updatedAt <= existing.updatedAt) {
+      if (args.updatedAt <= existing.updatedAt)
         return { status: "skipped", reason: "stale" };
-      }
       await ctx.db.patch(existing._id, data);
       return { status: "updated" };
     }
-
     await ctx.db.insert("properties", data);
     return { status: "inserted" };
   },
 });
 
+// ──────────────────────────────────────────────────────────────
+//  PROPERTIES — single delete (kept for compatibility)
+// ──────────────────────────────────────────────────────────────
 export const deleteProperty = mutation({
   args: { apiKey: v.string(), externalId: v.string(), updatedAt: v.number() },
   handler: async (ctx, args) => {
@@ -85,6 +84,251 @@ export const deleteProperty = mutation({
   },
 });
 
+// ──────────────────────────────────────────────────────────────
+//  PROPERTIES — batch upsert (JSON payload)
+// ──────────────────────────────────────────────────────────────
+export const batchUpsertProperties = mutation({
+  args: {
+    apiKey: v.string(),
+    itemsJson: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+
+    type Item = {
+      externalId: string;
+      name: string;
+      address?: string;
+      colorHex: string;
+      monthlyBudget: number;
+      isDefault: boolean;
+      updatedAt: number;
+    };
+
+    let items: Item[];
+    try {
+      items = JSON.parse(args.itemsJson) as Item[];
+    } catch {
+      throw new Error("Invalid itemsJson");
+    }
+
+    let inserted = 0,
+      updated = 0,
+      skipped = 0;
+
+    for (const item of items) {
+      const existing = await ctx.db
+        .query("properties")
+        .withIndex("by_externalId", (q) => q.eq("externalId", item.externalId))
+        .unique();
+
+      if (existing && (existing.ownerId as unknown as string) !== ownerId) {
+        skipped++;
+        continue;
+      }
+
+      const data = {
+        externalId: item.externalId,
+        name: item.name,
+        address: item.address,
+        colorHex: item.colorHex,
+        monthlyBudget: item.monthlyBudget,
+        isDefault: item.isDefault,
+        updatedAt: item.updatedAt,
+        deleted: false,
+        ownerId,
+      };
+
+      if (existing) {
+        if (item.updatedAt <= existing.updatedAt) {
+          skipped++;
+          continue;
+        }
+        await ctx.db.patch(existing._id, data);
+        updated++;
+      } else {
+        await ctx.db.insert("properties", data);
+        inserted++;
+      }
+    }
+    return { inserted, updated, skipped };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  PROPERTIES — batch delete (JSON payload)
+// ──────────────────────────────────────────────────────────────
+export const batchDeleteProperties = mutation({
+  args: {
+    apiKey: v.string(),
+    externalIdsJson: v.string(),
+    updatedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+
+    let externalIds: string[];
+    try {
+      externalIds = JSON.parse(args.externalIdsJson) as string[];
+    } catch {
+      throw new Error("Invalid externalIdsJson");
+    }
+
+    let deleted = 0,
+      skipped = 0;
+    for (const extId of externalIds) {
+      const existing = await ctx.db
+        .query("properties")
+        .withIndex("by_externalId", (q) => q.eq("externalId", extId))
+        .unique();
+      if (!existing) {
+        skipped++;
+        continue;
+      }
+      if ((existing.ownerId as unknown as string) !== ownerId) {
+        skipped++;
+        continue;
+      }
+      await ctx.db.patch(existing._id, {
+        deleted: true,
+        updatedAt: args.updatedAt,
+      });
+      deleted++;
+    }
+    return { deleted, skipped };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  BILLS — batch upsert (JSON payload)
+// ──────────────────────────────────────────────────────────────
+export const batchUpsertBills = mutation({
+  args: {
+    apiKey: v.string(),
+    itemsJson: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+
+    type Item = {
+      externalId: string;
+      title: string;
+      amount: number;
+      categoryRawValue: string;
+      dueDate: number;
+      isPaid: boolean;
+      paymentDate?: number;
+      notes?: string;
+      receiptIdentifier?: string;
+      isRecurring: boolean;
+      recurringFrequencyRaw: string;
+      propertyExternalId: string;
+      updatedAt: number;
+    };
+
+    let items: Item[];
+    try {
+      items = JSON.parse(args.itemsJson) as Item[];
+    } catch {
+      throw new Error("Invalid itemsJson");
+    }
+
+    let inserted = 0,
+      updated = 0,
+      skipped = 0;
+
+    for (const item of items) {
+      const existing = await ctx.db
+        .query("bills")
+        .withIndex("by_externalId", (q) => q.eq("externalId", item.externalId))
+        .unique();
+
+      if (existing && (existing.ownerId as unknown as string) !== ownerId) {
+        skipped++;
+        continue;
+      }
+
+      const data = {
+        externalId: item.externalId,
+        title: item.title,
+        amount: item.amount,
+        categoryRawValue: item.categoryRawValue,
+        dueDate: item.dueDate,
+        isPaid: item.isPaid,
+        paymentDate: item.paymentDate,
+        notes: item.notes,
+        receiptIdentifier: item.receiptIdentifier,
+        isRecurring: item.isRecurring,
+        recurringFrequencyRaw: item.recurringFrequencyRaw,
+        propertyExternalId: item.propertyExternalId,
+        updatedAt: item.updatedAt,
+        deleted: false,
+        ownerId,
+      };
+
+      if (existing) {
+        if (item.updatedAt <= existing.updatedAt) {
+          skipped++;
+          continue;
+        }
+        await ctx.db.patch(existing._id, data);
+        updated++;
+      } else {
+        await ctx.db.insert("bills", data);
+        inserted++;
+      }
+    }
+    return { inserted, updated, skipped };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  BILLS — batch delete (JSON payload)
+// ──────────────────────────────────────────────────────────────
+export const batchDeleteBills = mutation({
+  args: {
+    apiKey: v.string(),
+    externalIdsJson: v.string(),
+    updatedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+
+    let externalIds: string[];
+    try {
+      externalIds = JSON.parse(args.externalIdsJson) as string[];
+    } catch {
+      throw new Error("Invalid externalIdsJson");
+    }
+
+    let deleted = 0,
+      skipped = 0;
+    for (const extId of externalIds) {
+      const existing = await ctx.db
+        .query("bills")
+        .withIndex("by_externalId", (q) => q.eq("externalId", extId))
+        .unique();
+      if (!existing) {
+        skipped++;
+        continue;
+      }
+      if ((existing.ownerId as unknown as string) !== ownerId) {
+        skipped++;
+        continue;
+      }
+      await ctx.db.patch(existing._id, {
+        deleted: true,
+        updatedAt: args.updatedAt,
+      });
+      deleted++;
+    }
+    return { deleted, skipped };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  PROPERTIES — list
+// ──────────────────────────────────────────────────────────────
 export const listProperties = query({
   args: { apiKey: v.string(), since: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -100,9 +344,8 @@ export const listProperties = query({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS
+//  BILLS — single upsert (kept for compatibility)
 // ──────────────────────────────────────────────────────────────
-
 export const upsertBill = mutation({
   args: {
     apiKey: v.string(),
@@ -122,7 +365,6 @@ export const upsertBill = mutation({
   },
   handler: async (ctx, args) => {
     const ownerId = await requireUser(ctx, args.apiKey);
-
     const existing = await ctx.db
       .query("bills")
       .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId))
@@ -136,18 +378,19 @@ export const upsertBill = mutation({
     const data = { ...rest, deleted: false, ownerId };
 
     if (existing) {
-      if (args.updatedAt <= existing.updatedAt) {
+      if (args.updatedAt <= existing.updatedAt)
         return { status: "skipped", reason: "stale" };
-      }
       await ctx.db.patch(existing._id, data);
       return { status: "updated" };
     }
-
     await ctx.db.insert("bills", data);
     return { status: "inserted" };
   },
 });
 
+// ──────────────────────────────────────────────────────────────
+//  BILLS — single delete (kept for compatibility)
+// ──────────────────────────────────────────────────────────────
 export const deleteBill = mutation({
   args: { apiKey: v.string(), externalId: v.string(), updatedAt: v.number() },
   handler: async (ctx, args) => {
@@ -167,6 +410,9 @@ export const deleteBill = mutation({
   },
 });
 
+// ──────────────────────────────────────────────────────────────
+//  BILLS — list
+// ──────────────────────────────────────────────────────────────
 export const listBills = query({
   args: {
     apiKey: v.string(),
@@ -187,5 +433,81 @@ export const listBills = query({
           ? b.propertyExternalId === args.propertyExternalId
           : true,
       );
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  PROPERTIES — fetch one by externalId
+// ──────────────────────────────────────────────────────────────
+export const getPropertyByExternalId = query({
+  args: { apiKey: v.string(), externalId: v.string() },
+  handler: async (ctx, args) => {
+    await requireUser(ctx, args.apiKey);
+    const prop = await ctx.db
+      .query("properties")
+      .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId))
+      .unique();
+    return prop ?? null;
+  },
+});
+
+//  ONE-TIME MIGRATION
+//  Repoints every bill in your account to the correct property.
+//  Safe to run multiple times — idempotent.
+//  Delete this function after the migration succeeds.
+// ──────────────────────────────────────────────────────────────
+export const migrationFixPropertyRefs = mutation({
+  args: {
+    apiKey: v.string(),
+    targetPropertyExternalId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+
+    // 1. Confirm the target property exists and belongs to this user.
+    const target = await ctx.db
+      .query("properties")
+      .withIndex("by_externalId", (q) =>
+        q.eq("externalId", args.targetPropertyExternalId),
+      )
+      .unique();
+
+    if (!target) {
+      throw new Error(
+        `Target property ${args.targetPropertyExternalId} not found`,
+      );
+    }
+    if ((target.ownerId as unknown as string) !== ownerId) {
+      throw new Error("Target property belongs to a different owner");
+    }
+
+    // 2. Repoint every bill belonging to this user.
+    const allBills = await ctx.db
+      .query("bills")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .collect();
+
+    let patched = 0;
+    let alreadyCorrect = 0;
+    const now = Date.now();
+
+    for (const bill of allBills) {
+      if (bill.propertyExternalId === args.targetPropertyExternalId) {
+        alreadyCorrect++;
+        continue;
+      }
+      await ctx.db.patch(bill._id, {
+        propertyExternalId: args.targetPropertyExternalId,
+        updatedAt: now,
+      });
+      patched++;
+    }
+
+    return {
+      totalBills: allBills.length,
+      patched,
+      alreadyCorrect,
+      targetProperty: target.name,
+    };
   },
 });
