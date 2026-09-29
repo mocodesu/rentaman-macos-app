@@ -9,6 +9,7 @@ enum SyncState: Equatable {
     case localOnly
     case idle
     case syncing
+    case live            // 🆕 connected to live stream
     case error(String)
     
     var icon: String {
@@ -16,6 +17,7 @@ enum SyncState: Equatable {
         case .localOnly: return "internaldrive"
         case .idle: return "checkmark.icloud"
         case .syncing: return "arrow.triangle.2.circlepath.icloud"
+        case .live: return "dot.radiowaves.left.and.right"
         case .error: return "exclamationmark.icloud"
         }
     }
@@ -25,6 +27,7 @@ enum SyncState: Equatable {
         case .localOnly: return "gray"
         case .idle: return "green"
         case .syncing: return "blue"
+        case .live: return "green"
         case .error: return "red"
         }
     }
@@ -34,15 +37,13 @@ enum SyncState: Equatable {
         case .localOnly: return "Local Only"
         case .idle: return "Synced"
         case .syncing: return "Syncing…"
+        case .live: return "Live"
         case .error(let msg): return "Sync error: \(msg)"
         }
     }
 }
 
 // MARK: - Convex Mutation Response
-/// Matches the shape returned by our Convex mutations:
-///   { status: "inserted" | "updated" | "skipped", reason?: "stale" }
-/// All fields optional so a missing field never crashes decoding.
 struct ConvexMutationResponse: Decodable {
     let status: String?
     let reason: String?
@@ -86,12 +87,17 @@ final class SyncService {
     var lastSyncAt: Date? = nil
     var pendingCount: Int = 0
     var lastError: String? = nil
+    var isLive: Bool = false
     
     private var modelContext: ModelContext?
     private var pushTask: Task<Void, Never>?
     private var retryAttempt: Int = 0
     private var client: ConvexClient?
     private var apiKey: String?
+    
+    // 🆕 Real-time subscription handles
+    private var propertiesSubscription: AnyCancellable?
+    private var billsSubscription: AnyCancellable?
     
     static let shared = SyncService()
     private init() {}
@@ -115,20 +121,136 @@ final class SyncService {
         if client == nil {
             self.client = ConvexClient(deploymentUrl: url.absoluteString)
         }
-        Task { await pullRemoteChanges() }
+        
+        // 🆕 Start live subscriptions instead of just pulling once
+        startRealtimeSubscriptions()
+        
+        // Also do an initial push in case there are pending local changes
+        Task { await pushLocalChanges() }
     }
     
     func reset() {
+        // 🆕 Cancel live subscriptions on sign out
+        stopRealtimeSubscriptions()
+        
         apiKey = nil
         state = .localOnly
         pendingCount = 0
         lastSyncAt = nil
         lastError = nil
+        isLive = false
         pushTask?.cancel()
         pushTask = nil
     }
     
-    // MARK: - Triggers
+    // MARK: - Real-time Subscriptions
+    private func startRealtimeSubscriptions() {
+        guard let client = client, let apiKey = apiKey else { return }
+        
+        // Cancel any existing subscriptions first
+        stopRealtimeSubscriptions()
+        
+        print("📡 [Sync] Starting real-time subscriptions…")
+        
+        let propsArgs: [String: ConvexEncodable?] = ["apiKey": apiKey]
+        let propsPublisher = client.subscribe(
+            to: "rentaman:listProperties",
+            with: propsArgs,
+            yielding: [RemoteProperty].self
+        )
+        
+        propertiesSubscription = propsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    switch completion {
+                    case .finished:
+                        print("📡 [Sync] Properties subscription finished")
+                    case .failure(let error):
+                        print("❌ [Sync] Properties subscription failed: \(error)")
+                        self.isLive = false
+                        self.state = .error("Live properties stream failed: \(error.localizedDescription)")
+                        // Retry after a delay
+                        self.scheduleSubscriptionRetry()
+                    }
+                },
+                receiveValue: { [weak self] remoteProps in
+                    guard let self = self, let context = self.modelContext else { return }
+                    print("📡 [Sync] Received \(remoteProps.count) properties from live stream")
+                    for remote in remoteProps {
+                        self.upsertLocalProperty(remote, context: context)
+                    }
+                    try? context.save()
+                    self.lastSyncAt = Date()
+                    self.markLiveIfReady()
+                }
+            )
+        
+        let billsArgs: [String: ConvexEncodable?] = ["apiKey": apiKey]
+        let billsPublisher = client.subscribe(
+            to: "rentaman:listBills",
+            with: billsArgs,
+            yielding: [RemoteBill].self
+        )
+        
+        billsSubscription = billsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    switch completion {
+                    case .finished:
+                        print("📡 [Sync] Bills subscription finished")
+                    case .failure(let error):
+                        print("❌ [Sync] Bills subscription failed: \(error)")
+                        self.isLive = false
+                        self.state = .error("Live bills stream failed: \(error.localizedDescription)")
+                        self.scheduleSubscriptionRetry()
+                    }
+                },
+                receiveValue: { [weak self] remoteBills in
+                    guard let self = self, let context = self.modelContext else { return }
+                    print("📡 [Sync] Received \(remoteBills.count) bills from live stream")
+                    for remote in remoteBills {
+                        self.upsertLocalBill(remote, context: context)
+                    }
+                    try? context.save()
+                    self.lastSyncAt = Date()
+                    self.markLiveIfReady()
+                }
+            )
+    }
+    
+    private func stopRealtimeSubscriptions() {
+        propertiesSubscription?.cancel()
+        billsSubscription?.cancel()
+        propertiesSubscription = nil
+        billsSubscription = nil
+        isLive = false
+    }
+    
+    private func markLiveIfReady() {
+        // Mark as live once both streams have delivered at least one payload
+        if propertiesSubscription != nil && billsSubscription != nil && !isLive {
+            isLive = true
+            // Only override state if we're not currently pushing
+            if state != .syncing {
+                state = .live
+            }
+        }
+    }
+    
+    private func scheduleSubscriptionRetry() {
+        print("⏳ [Sync] Retrying subscriptions in 10s")
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard let self = self, self.apiKey != nil else { return }
+            self.startRealtimeSubscriptions()
+        }
+    }
+    
+    // MARK: - Manual Triggers
     func schedulePush() {
         guard apiKey != nil, ConvexConfig.isConfigured else {
             state = .localOnly
@@ -145,69 +267,11 @@ final class SyncService {
     func forceSync() async {
         guard apiKey != nil else { return }
         await pushLocalChanges()
-        await pullRemoteChanges()
-    }
-
-        // MARK: - Delete Operations (server-first)
-    /// Pushes a delete to Convex, then removes the bill locally.
-    /// If the network call fails, we still remove locally — the server
-    /// will eventually reconcile when the pull runs.
-    func deleteBill(_ bill: Bill) async {
-        // 1. Push to Convex first
-        if let client = client, let apiKey = apiKey {
-            let payload: [String: ConvexEncodable?] = [
-                "apiKey": apiKey,
-                "externalId": bill.id,
-                "updatedAt": Date().timeIntervalSince1970 * 1000,
-            ]
-            do {
-                let _: ConvexMutationResponse = try await client.mutation(
-                    "rentaman:deleteBill",
-                    with: payload
-                )
-                print("✅ [Sync] Deleted bill on server: \(bill.title)")
-            } catch {
-                print("⚠️ [Sync] Server delete failed for '\(bill.title)': \(error). Proceeding with local delete.")
-            }
-        }
-        
-        // 2. Delete locally on the main thread
-        await MainActor.run {
-            if let context = modelContext {
-                context.delete(bill)
-                try? context.save()
-            }
-        }
+        // Restart subscriptions in case they were dropped
+        startRealtimeSubscriptions()
     }
     
-    /// Pushes a delete to Convex, then removes the property locally.
-    func deleteProperty(_ property: Property) async {
-        if let client = client, let apiKey = apiKey {
-            let payload: [String: ConvexEncodable?] = [
-                "apiKey": apiKey,
-                "externalId": property.id,
-                "updatedAt": Date().timeIntervalSince1970 * 1000,
-            ]
-            do {
-                let _: ConvexMutationResponse = try await client.mutation(
-                    "rentaman:deleteProperty",
-                    with: payload
-                )
-                print("✅ [Sync] Deleted property on server: \(property.name)")
-            } catch {
-                print("⚠️ [Sync] Server delete failed for '\(property.name)': \(error). Proceeding with local delete.")
-            }
-        }
-        
-        await MainActor.run {
-            if let modelContext = modelContext {
-                modelContext.delete(property)
-                try? modelContext.save()
-            }
-        }
-    }
-    
-    // MARK: - Push
+    // MARK: - Push (Local → Convex)
     private func pushLocalChanges() async {
         guard let context = modelContext,
               let client = client,
@@ -233,6 +297,16 @@ final class SyncService {
             return
         }
         
+        if propsToPush.isEmpty && billsToPush.isEmpty {
+            // Nothing to push — make sure state reflects live if we have a subscription
+            if isLive {
+                await MainActor.run { self.state = .live }
+            } else {
+                await MainActor.run { self.state = .idle }
+            }
+            return
+        }
+        
         print("🔄 [Sync] Pushing \(propsToPush.count) properties, \(billsToPush.count) bills")
         
         await MainActor.run {
@@ -242,7 +316,6 @@ final class SyncService {
         var failureCount = 0
         var lastErrorMsg: String? = nil
         
-        // Push properties
         for property in propsToPush {
             if Task.isCancelled { return }
             do {
@@ -256,7 +329,6 @@ final class SyncService {
             }
         }
         
-        // Push bills
         for bill in billsToPush {
             if Task.isCancelled { return }
             do {
@@ -282,58 +354,11 @@ final class SyncService {
             self.lastError = lastErrorMsg
             
             if failureCount == 0 {
-                self.state = .idle
+                self.state = self.isLive ? .live : .idle
                 self.retryAttempt = 0
             } else {
                 self.state = .error(lastErrorMsg ?? "Some items failed to sync")
                 self.scheduleRetry()
-            }
-        }
-    }
-    
-    // MARK: - Pull
-    private func pullRemoteChanges() async {
-        guard let client = client,
-              let apiKey = apiKey,
-              let context = modelContext else { return }
-        
-        await MainActor.run { self.state = .syncing }
-        
-        do {
-            let propsArgs: [String: ConvexEncodable?] = ["apiKey": apiKey]
-            let propsPublisher = client.subscribe(
-                to: "rentaman:listProperties",
-                with: propsArgs,
-                yielding: [RemoteProperty].self
-            )
-            let propsArray = try await propsPublisher.firstValue()
-            for remote in propsArray {
-                upsertLocalProperty(remote, context: context)
-            }
-            
-            let billsArgs: [String: ConvexEncodable?] = ["apiKey": apiKey]
-            let billsPublisher = client.subscribe(
-                to: "rentaman:listBills",
-                with: billsArgs,
-                yielding: [RemoteBill].self
-            )
-            let billsArray = try await billsPublisher.firstValue()
-            for remote in billsArray {
-                upsertLocalBill(remote, context: context)
-            }
-            
-            try? context.save()
-            
-            await MainActor.run {
-                self.lastSyncAt = Date()
-                if self.pendingCount == 0 {
-                    self.state = .idle
-                }
-            }
-        } catch {
-            print("❌ [Sync] pull failed: \(error)")
-            await MainActor.run {
-                self.state = .error(error.localizedDescription)
             }
         }
     }
@@ -353,7 +378,6 @@ final class SyncService {
             payload["address"] = address
         }
         
-        // ✅ Explicitly type the response as our struct — not String
         let _: ConvexMutationResponse = try await client.mutation(
             "rentaman:upsertProperty",
             with: payload
@@ -383,7 +407,6 @@ final class SyncService {
             "propertyExternalId": propertyId,
             "updatedAt": bill.updatedAt.timeIntervalSince1970 * 1000,
         ]
-        
         if let paymentDate = bill.paymentDate {
             payload["paymentDate"] = paymentDate.timeIntervalSince1970 * 1000
         }
@@ -394,14 +417,66 @@ final class SyncService {
             payload["receiptIdentifier"] = receiptId
         }
         
-        // ✅ Explicitly type the response as our struct — not String
         let _: ConvexMutationResponse = try await client.mutation(
             "rentaman:upsertBill",
             with: payload
         )
     }
     
-    // MARK: - Local Upserts
+    // MARK: - Delete Operations (server-first)
+    func deleteBill(_ bill: Bill) async {
+        if let client = client, let apiKey = apiKey {
+            let payload: [String: ConvexEncodable?] = [
+                "apiKey": apiKey,
+                "externalId": bill.id,
+                "updatedAt": Date().timeIntervalSince1970 * 1000,
+            ]
+            do {
+                let _: ConvexMutationResponse = try await client.mutation(
+                    "rentaman:deleteBill",
+                    with: payload
+                )
+                print("✅ [Sync] Deleted bill on server: \(bill.title)")
+            } catch {
+                print("⚠️ [Sync] Server delete failed for '\(bill.title)': \(error). Proceeding with local delete.")
+            }
+        }
+        
+        await MainActor.run {
+            if let context = modelContext {
+                context.delete(bill)
+                try? context.save()
+            }
+        }
+    }
+    
+    func deleteProperty(_ property: Property) async {
+        if let client = client, let apiKey = apiKey {
+            let payload: [String: ConvexEncodable?] = [
+                "apiKey": apiKey,
+                "externalId": property.id,
+                "updatedAt": Date().timeIntervalSince1970 * 1000,
+            ]
+            do {
+                let _: ConvexMutationResponse = try await client.mutation(
+                    "rentaman:deleteProperty",
+                    with: payload
+                )
+                print("✅ [Sync] Deleted property on server: \(property.name)")
+            } catch {
+                print("⚠️ [Sync] Server delete failed for '\(property.name)': \(error). Proceeding with local delete.")
+            }
+        }
+        
+        await MainActor.run {
+            if let context = modelContext {
+                context.delete(property)
+                try? context.save()
+            }
+        }
+    }
+    
+    // MARK: - Local Upserts (from live stream)
     private func upsertLocalProperty(_ remote: RemoteProperty, context: ModelContext) {
         let remoteId = remote.externalId
         let descriptor = FetchDescriptor<Property>(predicate: #Predicate { $0.id == remoteId })
@@ -409,6 +484,10 @@ final class SyncService {
         let remoteDate = Date(timeIntervalSince1970: remote.updatedAt / 1000)
         
         if let existing = existing {
+            // Skip if local change is newer or pending
+            if existing.syncStatus != .synced && existing.updatedAt > remoteDate {
+                return
+            }
             if remoteDate > existing.updatedAt {
                 existing.name = remote.name
                 existing.address = remote.address
@@ -442,6 +521,9 @@ final class SyncService {
         let remoteDate = Date(timeIntervalSince1970: remote.updatedAt / 1000)
         
         if let existing = existing {
+            if existing.syncStatus != .synced && existing.updatedAt > remoteDate {
+                return
+            }
             if remoteDate > existing.updatedAt {
                 existing.title = remote.title
                 existing.amount = remote.amount

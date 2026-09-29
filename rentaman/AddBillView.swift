@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 
 struct AddBillView: View {
-    // Optional bill for edit mode
     var billToEdit: Bill? = nil
     var preSelectedPropertyId: String? = nil
     
@@ -230,19 +229,19 @@ struct AddBillView: View {
             .padding(20)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 600, height: 750)
+        // ✅ Explicit frame — sheet adopts this size on macOS
+        .frame(minWidth: 600, idealWidth: 600, maxWidth: 700,
+               minHeight: 700, idealHeight: 780, maxHeight: 900)
         .onAppear {
             if let bill = billToEdit {
                 viewModel.loadFrom(bill)
             } else {
-                // Pre-select default property
                 if let preselected = preSelectedPropertyId {
                     viewModel.selectedPropertyId = preselected
                 } else if let defaultProp = properties.first(where: { $0.isDefault }) {
                     viewModel.selectedPropertyId = defaultProp.id
                 }
                 viewModel.entryCurrency = appCurrency
-                // Attempt prefill
                 viewModel.prefillFromHistory(bills: allBills, properties: properties)
             }
         }

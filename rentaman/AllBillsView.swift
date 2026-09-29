@@ -12,14 +12,21 @@ struct AllBillsView: View {
     @State private var searchText = ""
     @State private var filterStatus: FilterStatus = .all
     @State private var selectedPropertyId: String? = nil
-    @State private var editingBill: Bill? = nil
-    @State private var isShowingEditSheet = false
+    
+    // 🔧 Use a wrapper so .sheet(item:) has a stable, non-optional identity
+    @State private var editingBillWrapper: EditingBillWrapper? = nil
     
     enum FilterStatus: String, CaseIterable, Identifiable {
         case all = "All"
         case unpaid = "Unpaid"
         case paid = "Paid"
         var id: String { self.rawValue }
+    }
+    
+    /// Wrapper that is safely Identifiable for .sheet(item:)
+    struct EditingBillWrapper: Identifiable {
+        let id: String
+        let bill: Bill
     }
     
     private var filteredBills: [Bill] {
@@ -123,8 +130,6 @@ struct AllBillsView: View {
                                 bill.paymentDate = newValue ? Date() : nil
                                 bill.syncStatus = .pendingUpload
                                 bill.updatedAt = Date()
-                                
-                                // 🔥 Trigger sync
                                 SyncService.shared.schedulePush()
                             }
                         ))
@@ -191,8 +196,8 @@ struct AllBillsView: View {
                     
                     TableColumn("") { (bill: Bill) in
                         Button {
-                            editingBill = bill
-                            isShowingEditSheet = true
+                            // ✅ Set the wrapper — sheet opens with a valid item
+                            editingBillWrapper = EditingBillWrapper(id: bill.id, bill: bill)
                         } label: {
                             Image(systemName: "square.and.pencil")
                                 .foregroundStyle(.blue)
@@ -207,8 +212,7 @@ struct AllBillsView: View {
                         Button {
                             if let firstId = selectedIds.first,
                                let bill = allBills.first(where: { $0.id == firstId }) {
-                                editingBill = bill
-                                isShowingEditSheet = true
+                                editingBillWrapper = EditingBillWrapper(id: bill.id, bill: bill)
                             }
                         } label: {
                             Label("Edit", systemImage: "square.and.pencil")
@@ -233,11 +237,10 @@ struct AllBillsView: View {
                 }
             }
         }
-        .sheet(isPresented: $isShowingEditSheet) {
-            if let bill = editingBill {
-                AddBillView(billToEdit: bill)
-                    .environment(\.appCurrency, currency)
-            }
+        // ✅ Use .sheet(item:) — sheet only opens when editingBillWrapper is non-nil
+        .sheet(item: $editingBillWrapper) { wrapper in
+            AddBillView(billToEdit: wrapper.bill)
+                .environment(\.appCurrency, currency)
         }
     }
     
@@ -248,15 +251,11 @@ struct AllBillsView: View {
             bill.syncStatus = .pendingUpload
             bill.updatedAt = Date()
         }
-        // 🔥 Trigger sync
         SyncService.shared.schedulePush()
     }
     
     private func deleteBills(ids: Set<Bill.ID>) {
-        // Capture the actual Bill objects first
         let toDelete = allBills.filter { ids.contains($0.id) }
-        
-        // Fire server-side delete for each, then remove locally
         for bill in toDelete {
             Task {
                 await SyncService.shared.deleteBill(bill)
