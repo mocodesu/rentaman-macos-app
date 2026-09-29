@@ -27,79 +27,116 @@ struct ReportsView: View {
         ReportsAnalytics(bills: filteredBills, properties: filteredProperties)
     }
     
-    private let kpiColumns = [
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible())
-    ]
+    private var kpiColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 14), count: 4)
+    }
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                
-                HStack {
-                    Image(systemName: "chart.pie.fill")
-                        .font(.title)
-                        .foregroundStyle(.blue)
-                    Text("Reports & Analytics")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                // MARK: - Header
+                HStack(alignment: .center) {
+                    RMPageHeader(
+                        icon: "chart.pie.fill",
+                        title: "Reports & Analytics",
+                        subtitle: "Insights into your spending patterns"
+                    )
                     
                     Spacer()
                     
-                    Picker("Property", selection: $selectedPropertyId) {
-                        Text("All Properties").tag(nil as String?)
-                        ForEach(properties) { prop in
-                            Text(prop.name).tag(prop.id as String?)
-                        }
-                    }
-                    .frame(width: 180)
+                    PropertyFilterMenu(
+                        properties: properties,
+                        selection: $selectedPropertyId
+                    )
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
                 
-                LazyVGrid(columns: kpiColumns, spacing: 16) {
-                    ReportKPICard(
+                // MARK: - KPI Cards
+                LazyVGrid(columns: kpiColumns, spacing: 14) {
+                    HeroKPICard(
                         title: "Total Spent",
                         value: CurrencyFormatter.format(analytics.totalSpentThisYear, as: currency),
                         subtitle: "This year",
                         icon: "banknote.fill",
-                        color: .blue
+                        gradient: LinearGradient(
+                            colors: [Color(red: 0.28, green: 0.55, blue: 0.98),
+                                     Color(red: 0.45, green: 0.28, blue: 0.92)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ),
+                        iconAccent: .blue
                     )
-                    ReportKPICard(
+                    
+                    HeroKPICard(
                         title: "This Month",
                         value: CurrencyFormatter.format(analytics.totalSpentThisMonth, as: currency),
                         subtitle: "Current month",
                         icon: "calendar",
-                        color: .green
+                        gradient: LinearGradient(
+                            colors: [Color(red: 0.15, green: 0.75, blue: 0.55),
+                                     Color(red: 0.08, green: 0.65, blue: 0.42)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ),
+                        iconAccent: .green
                     )
-                    ReportKPICard(
+                    
+                    HeroKPICard(
                         title: "Monthly Average",
                         value: CurrencyFormatter.format(analytics.averageMonthlySpend, as: currency),
                         subtitle: "12-month average",
                         icon: "chart.line.uptrend.xyaxis",
-                        color: .purple
+                        gradient: LinearGradient(
+                            colors: [Color(red: 0.62, green: 0.28, blue: 0.95),
+                                     Color(red: 0.85, green: 0.25, blue: 0.75)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ),
+                        iconAccent: .purple
                     )
-                    ReportKPICard(
+                    
+                    HeroKPICard(
                         title: "Over Budget",
                         value: "\(analytics.propertiesOverBudget.count)",
-                        subtitle: analytics.propertiesOverBudget.isEmpty ? "All on track" : analytics.propertiesOverBudget.joined(separator: ", "),
+                        subtitle: analytics.propertiesOverBudget.isEmpty
+                            ? "All on track"
+                            : analytics.propertiesOverBudget.joined(separator: ", "),
                         icon: "exclamationmark.triangle.fill",
-                        color: analytics.propertiesOverBudget.isEmpty ? .green : .red
+                        gradient: analytics.propertiesOverBudget.isEmpty
+                            ? LinearGradient(
+                                colors: [Color(red: 0.15, green: 0.75, blue: 0.55),
+                                         Color(red: 0.08, green: 0.65, blue: 0.42)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing)
+                            : LinearGradient(
+                                colors: [Color(red: 0.95, green: 0.35, blue: 0.35),
+                                         Color(red: 0.85, green: 0.15, blue: 0.35)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing),
+                        iconAccent: analytics.propertiesOverBudget.isEmpty ? .green : .red
                     )
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
                 
-                ChartCard(title: "Monthly Spending Trend", subtitle: "Last 12 months") {
+                // MARK: - Monthly Trend
+                RMContentCard(
+                    title: "Monthly Spending Trend",
+                    icon: "chart.xyaxis.line",
+                    iconColor: .blue,
+                    subtitle: "Last 12 months"
+                ) {
                     if analytics.monthlyTrend.allSatisfy({ $0.amount == 0 }) {
-                        EmptyChartState(message: "No spending data for the last 12 months.")
+                        SmallEmptyState(
+                            icon: "chart.line.uptrend.xyaxis",
+                            message: "No spending data yet"
+                        )
                     } else {
                         Chart(analytics.monthlyTrend) { point in
                             AreaMark(
                                 x: .value("Month", point.date),
                                 y: .value("Amount", CurrencyFormatter.convert(point.amount, to: currency))
                             )
-                            .foregroundStyle(.blue.opacity(0.15))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.blue.opacity(0.25), .blue.opacity(0.02)],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            )
                             .interpolationMethod(.monotone)
                             
                             LineMark(
@@ -107,22 +144,26 @@ struct ReportsView: View {
                                 y: .value("Amount", CurrencyFormatter.convert(point.amount, to: currency))
                             )
                             .foregroundStyle(.blue)
-                            .lineStyle(StrokeStyle(lineWidth: 2.5))
+                            .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
                             .interpolationMethod(.monotone)
                         }
                         .chartXAxis {
                             AxisMarks(values: .stride(by: .month)) { _ in
-                                AxisGridLine().foregroundStyle(.gray.opacity(0.2))
+                                AxisGridLine().foregroundStyle(.gray.opacity(0.15))
                                 AxisValueLabel(format: .dateTime.month(.abbreviated))
+                                    .font(.system(size: 10))
                             }
                         }
                         .chartYAxis {
                             AxisMarks { value in
-                                AxisGridLine().foregroundStyle(.gray.opacity(0.2))
+                                AxisGridLine().foregroundStyle(.gray.opacity(0.15))
                                 AxisValueLabel {
                                     if let amount = value.as(Double.self), amount.isFinite {
-                                        Text(CurrencyFormatter.compact(CurrencyFormatter.toKsh(amount, from: currency), as: currency))
-                                            .font(.caption2)
+                                        Text(CurrencyFormatter.compact(
+                                            CurrencyFormatter.toKsh(amount, from: currency),
+                                            as: currency
+                                        ))
+                                        .font(.system(size: 10))
                                     }
                                 }
                             }
@@ -130,47 +171,73 @@ struct ReportsView: View {
                         .frame(height: 260)
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
                 
-                HStack(alignment: .top, spacing: 16) {
-                    ChartCard(title: "Category Breakdown", subtitle: "Current year") {
+                // MARK: - Category & Property Comparison
+                HStack(alignment: .top, spacing: 14) {
+                    RMContentCard(
+                        title: "Category Breakdown",
+                        icon: "chart.bar.fill",
+                        iconColor: .orange,
+                        subtitle: "Current year"
+                    ) {
                         if analytics.categoryBreakdown.isEmpty {
-                            EmptyChartState(message: "No category data.")
+                            SmallEmptyState(
+                                icon: "chart.bar",
+                                message: "No category data yet"
+                            )
                         } else {
                             Chart(analytics.categoryBreakdown) { point in
                                 BarMark(
                                     x: .value("Amount", CurrencyFormatter.convert(point.amount, to: currency)),
                                     y: .value("Category", point.category.rawValue)
                                 )
-                                .foregroundStyle(point.category.color)
-                                .cornerRadius(4)
+                                .foregroundStyle(point.category.color.gradient)
+                                .cornerRadius(5)
                             }
                             .chartXAxis(.hidden)
                             .frame(height: 320)
                         }
                     }
                     
-                    ChartCard(title: "Spending by Property", subtitle: "Current year") {
+                    RMContentCard(
+                        title: "Spending by Property",
+                        icon: "house.fill",
+                        iconColor: .green,
+                        subtitle: "Current year"
+                    ) {
                         if analytics.propertyComparison.isEmpty {
-                            EmptyChartState(message: "No property data.")
+                            SmallEmptyState(
+                                icon: "house",
+                                message: "No property data yet"
+                            )
                         } else {
                             Chart(analytics.propertyComparison) { point in
                                 BarMark(
                                     x: .value("Property", point.name),
                                     y: .value("Amount", CurrencyFormatter.convert(point.amount, to: currency))
                                 )
-                                .foregroundStyle(point.color)
+                                .foregroundStyle(point.color.gradient)
                                 .cornerRadius(6)
                             }
                             .frame(height: 320)
                         }
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
                 
-                ChartCard(title: "Budget vs Actual", subtitle: "Current month") {
+                // MARK: - Budget vs Actual
+                RMContentCard(
+                    title: "Budget vs Actual",
+                    icon: "gauge.medium",
+                    iconColor: .purple,
+                    subtitle: "Current month"
+                ) {
                     if analytics.budgetVsActual.isEmpty || analytics.budgetVsActual.allSatisfy({ $0.budget == 0 }) {
-                        EmptyChartState(message: "No budgets set. Add a budget to each property to see this chart.")
+                        SmallEmptyState(
+                            icon: "gauge",
+                            message: "Set a monthly budget on each property to see this chart"
+                        )
                     } else {
                         Chart {
                             ForEach(analytics.budgetVsActual) { point in
@@ -178,7 +245,7 @@ struct ReportsView: View {
                                     x: .value("Property", point.name),
                                     y: .value("Amount", CurrencyFormatter.convert(point.budget, to: currency))
                                 )
-                                .foregroundStyle(.gray.opacity(0.4))
+                                .foregroundStyle(.gray.opacity(0.35))
                                 .position(by: .value("Type", "Budget"))
                                 .cornerRadius(4)
                             }
@@ -187,153 +254,136 @@ struct ReportsView: View {
                                     x: .value("Property", point.name),
                                     y: .value("Amount", CurrencyFormatter.convert(point.spent, to: currency))
                                 )
-                                .foregroundStyle(point.spent > point.budget ? Color.red : Color.green)
+                                .foregroundStyle(point.spent > point.budget ? Color.red.gradient : Color.green.gradient)
                                 .position(by: .value("Type", "Spent"))
                                 .cornerRadius(4)
                             }
                         }
-                        .chartLegend(position: .bottom)
+                        .chartLegend(position: .bottom, spacing: 16)
                         .frame(height: 280)
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
                 
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "flame.fill")
-                            .foregroundStyle(.orange)
-                        Text("Top 10 Expenses")
-                            .font(.headline)
-                        Spacer()
-                        Text("Current year")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    
+                // MARK: - Top 10 Expenses
+                RMContentCard(
+                    title: "Top 10 Expenses",
+                    icon: "flame.fill",
+                    iconColor: .orange,
+                    subtitle: "Current year"
+                ) {
                     if analytics.topExpenses.isEmpty {
-                        Text("No expenses recorded this year.")
-                            .foregroundStyle(.secondary)
-                            .padding()
-                            .frame(maxWidth: .infinity)
+                        SmallEmptyState(
+                            icon: "flame",
+                            message: "No expenses recorded this year"
+                        )
                     } else {
-                        ForEach(Array(analytics.topExpenses.enumerated()), id: \.element.id) { index, bill in
-                            HStack(spacing: 12) {
-                                Text("\(index + 1)")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20, alignment: .leading)
-                                
-                                Image(systemName: bill.category.iconName)
-                                    .foregroundStyle(bill.category.color)
-                                    .frame(width: 20)
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(bill.title).fontWeight(.medium)
-                                    Text("\(bill.property?.name ?? "Unknown") • \(bill.category.rawValue)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                
-                                Spacer()
-                                
-                                Text(bill.dueDate.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                
-                                Text(CurrencyFormatter.format(bill.amount, as: currency))
-                                    .fontWeight(.semibold)
-                                    .monospacedDigit()
-                                    .frame(width: 130, alignment: .trailing)
-                            }
-                            .padding(.vertical, 6)
-                            
-                            if index < analytics.topExpenses.count - 1 {
-                                Divider()
+                        VStack(spacing: 4) {
+                            ForEach(Array(analytics.topExpenses.enumerated()), id: \.element.id) { index, bill in
+                                TopExpenseRow(
+                                    rank: index + 1,
+                                    bill: bill,
+                                    currency: currency,
+                                    isLast: index == analytics.topExpenses.count - 1
+                                )
                             }
                         }
                     }
                 }
-                .padding()
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(12)
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
             }
-            .padding(.vertical)
+            .padding(.vertical, 24)
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(RMDesign.pageBackground)
     }
 }
 
-// MARK: - Reusable Chart Card Wrapper
-struct ChartCard<Content: View>: View {
-    let title: String
-    let subtitle: String
-    @ViewBuilder let content: Content
+// MARK: - Top Expense Row
+struct TopExpenseRow: View {
+    let rank: Int
+    let bill: Bill
+    let currency: AppCurrency
+    let isLast: Bool
+    
+    @State private var isHovered = false
+    
+    private var rankColor: Color {
+        switch rank {
+        case 1: return .yellow
+        case 2: return .gray
+        case 3: return .orange
+        default: return .secondary
+        }
+    }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.headline)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // Rank badge
+                ZStack {
+                    Circle()
+                        .fill(rank <= 3 ? rankColor.opacity(0.15) : Color.gray.opacity(0.08))
+                        .frame(width: 30, height: 30)
+                    Text("\(rank)")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(rank <= 3 ? rankColor : .secondary)
+                }
+                
+                // Category icon
+                Image(systemName: bill.category.iconName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(bill.category.color)
+                    .frame(width: 30, height: 30)
+                    .background(bill.category.color.opacity(0.12))
+                    .cornerRadius(8)
+                
+                // Info
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(bill.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                    
+                    HStack(spacing: 6) {
+                        if let prop = bill.property {
+                            Text(prop.name)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("•")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                        Text(bill.category.rawValue)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
                 Spacer()
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                
+                // Due date
+                Text(bill.dueDate.formatted(date: .abbreviated, time: .omitted))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                
+                // Amount
+                Text(CurrencyFormatter.format(bill.amount, as: currency))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .frame(width: 130, alignment: .trailing)
             }
-            content
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
-    }
-}
-
-// MARK: - Reusable Report KPI Card
-struct ReportKPICard: View {
-    let title: String
-    let value: String
-    let subtitle: String
-    let icon: String
-    let color: Color
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: icon).foregroundStyle(color)
-                Text(title).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isHovered ? Color.blue.opacity(0.04) : Color.clear)
+            .cornerRadius(8)
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.15)) {
+                    isHovered = hovering
+                }
             }
-            Text(value)
-                .font(.title3)
-                .fontWeight(.bold)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            
+            if !isLast {
+                Divider().padding(.leading, 54).opacity(0.6)
+            }
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
-    }
-}
-
-// MARK: - Empty Chart State
-struct EmptyChartState: View {
-    let message: String
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, minHeight: 200)
     }
 }
