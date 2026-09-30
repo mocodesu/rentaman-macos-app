@@ -2,7 +2,7 @@ import { mutation, query, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 
 // ──────────────────────────────────────────────────────────────
-//  HELPER: Verify API key and return userId (as string)
+//  HELPER
 // ──────────────────────────────────────────────────────────────
 async function requireUser(ctx: QueryCtx, apiKey: string): Promise<string> {
   if (!apiKey || apiKey.length < 32) throw new Error("Unauthorized");
@@ -200,7 +200,39 @@ export const batchDeleteProperties = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — batch upsert
+//  PROPERTIES — list
+// ──────────────────────────────────────────────────────────────
+export const listProperties = query({
+  args: { apiKey: v.string(), since: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+    const all = await ctx.db
+      .query("properties")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    return all
+      .filter((p) => !p.deleted)
+      .filter((p) => (args.since ? p.updatedAt > args.since : true));
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  PROPERTIES — fetch one by externalId
+// ──────────────────────────────────────────────────────────────
+export const getPropertyByExternalId = query({
+  args: { apiKey: v.string(), externalId: v.string() },
+  handler: async (ctx, args) => {
+    await requireUser(ctx, args.apiKey);
+    const prop = await ctx.db
+      .query("properties")
+      .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId))
+      .unique();
+    return prop ?? null;
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  BILLS — batch upsert  (all fields incl. isDeleted + deletedAt)
 // ──────────────────────────────────────────────────────────────
 export const batchUpsertBills = mutation({
   args: {
@@ -222,7 +254,10 @@ export const batchUpsertBills = mutation({
       receiptIdentifier?: string;
       isRecurring: boolean;
       recurringFrequencyRaw: string;
+      isPaused?: boolean;
       paymentMethodRaw?: string;
+      isDeleted?: boolean;
+      deletedAt?: number;
       propertyExternalId: string;
       updatedAt: number;
     };
@@ -261,10 +296,12 @@ export const batchUpsertBills = mutation({
         receiptIdentifier: item.receiptIdentifier,
         isRecurring: item.isRecurring,
         recurringFrequencyRaw: item.recurringFrequencyRaw,
+        isPaused: item.isPaused ?? false,
         paymentMethodRaw: item.paymentMethodRaw,
+        deleted: item.isDeleted ?? false,
+        deletedAt: item.deletedAt,
         propertyExternalId: item.propertyExternalId,
         updatedAt: item.updatedAt,
-        deleted: false,
         ownerId,
       };
 
@@ -285,7 +322,7 @@ export const batchUpsertBills = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — batch delete
+//  BILLS — batch delete (permanent tombstone)
 // ──────────────────────────────────────────────────────────────
 export const batchDeleteBills = mutation({
   args: {
@@ -320,6 +357,7 @@ export const batchDeleteBills = mutation({
       }
       await ctx.db.patch(existing._id, {
         deleted: true,
+        deletedAt: args.updatedAt,
         updatedAt: args.updatedAt,
       });
       deleted++;
@@ -329,24 +367,7 @@ export const batchDeleteBills = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  PROPERTIES — list
-// ──────────────────────────────────────────────────────────────
-export const listProperties = query({
-  args: { apiKey: v.string(), since: v.optional(v.number()) },
-  handler: async (ctx, args) => {
-    const ownerId = await requireUser(ctx, args.apiKey);
-    const all = await ctx.db
-      .query("properties")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
-      .collect();
-    return all
-      .filter((p) => !p.deleted)
-      .filter((p) => (args.since ? p.updatedAt > args.since : true));
-  },
-});
-
-// ──────────────────────────────────────────────────────────────
-//  BILLS — single upsert
+//  BILLS — single upsert (with isDeleted + deletedAt)
 // ──────────────────────────────────────────────────────────────
 export const upsertBill = mutation({
   args: {
@@ -362,7 +383,10 @@ export const upsertBill = mutation({
     receiptIdentifier: v.optional(v.string()),
     isRecurring: v.boolean(),
     recurringFrequencyRaw: v.string(),
+    isPaused: v.optional(v.boolean()),
     paymentMethodRaw: v.optional(v.string()),
+    isDeleted: v.optional(v.boolean()),
+    deletedAt: v.optional(v.number()),
     propertyExternalId: v.string(),
     updatedAt: v.number(),
   },
@@ -377,8 +401,14 @@ export const upsertBill = mutation({
       throw new Error("Unauthorized: not your bill");
     }
 
-    const { apiKey, ...rest } = args;
-    const data = { ...rest, deleted: false, ownerId };
+    const { apiKey, isDeleted, ...rest } = args;
+    const data = {
+      ...rest,
+      isPaused: rest.isPaused ?? false,
+      deleted: isDeleted ?? false,
+      deletedAt: rest.deletedAt,
+      ownerId,
+    };
 
     if (existing) {
       if (args.updatedAt <= existing.updatedAt)
@@ -392,7 +422,7 @@ export const upsertBill = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — single delete
+//  BILLS — single delete (soft)
 // ──────────────────────────────────────────────────────────────
 export const deleteBill = mutation({
   args: { apiKey: v.string(), externalId: v.string(), updatedAt: v.number() },
@@ -407,6 +437,7 @@ export const deleteBill = mutation({
       throw new Error("Unauthorized");
     await ctx.db.patch(existing._id, {
       deleted: true,
+      deletedAt: args.updatedAt,
       updatedAt: args.updatedAt,
     });
     return { status: "deleted" };
@@ -414,13 +445,37 @@ export const deleteBill = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — list
+//  BILLS — restore
+// ──────────────────────────────────────────────────────────────
+export const restoreBill = mutation({
+  args: { apiKey: v.string(), externalId: v.string(), updatedAt: v.number() },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+    const existing = await ctx.db
+      .query("bills")
+      .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId))
+      .unique();
+    if (!existing) return { status: "not_found" };
+    if ((existing.ownerId as unknown as string) !== ownerId)
+      throw new Error("Unauthorized");
+    await ctx.db.patch(existing._id, {
+      deleted: false,
+      deletedAt: undefined,
+      updatedAt: args.updatedAt,
+    });
+    return { status: "restored" };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  BILLS — list (excludes soft-deleted by default)
 // ──────────────────────────────────────────────────────────────
 export const listBills = query({
   args: {
     apiKey: v.string(),
     since: v.optional(v.number()),
     propertyExternalId: v.optional(v.string()),
+    includeDeleted: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const ownerId = await requireUser(ctx, args.apiKey);
@@ -429,7 +484,7 @@ export const listBills = query({
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
       .collect();
     return all
-      .filter((b) => !b.deleted)
+      .filter((b) => (args.includeDeleted ? true : !b.deleted))
       .filter((b) => (args.since ? b.updatedAt > args.since : true))
       .filter((b) =>
         args.propertyExternalId
@@ -440,55 +495,49 @@ export const listBills = query({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  PROPERTIES — fetch one by externalId
+//  MIGRATION — Backfill isPaused = false
 // ──────────────────────────────────────────────────────────────
-export const getPropertyByExternalId = query({
-  args: { apiKey: v.string(), externalId: v.string() },
+export const migrationBackfillIsPaused = mutation({
+  args: { apiKey: v.string() },
   handler: async (ctx, args) => {
-    await requireUser(ctx, args.apiKey);
-    const prop = await ctx.db
-      .query("properties")
-      .withIndex("by_externalId", (q) => q.eq("externalId", args.externalId))
-      .unique();
-    return prop ?? null;
+    const ownerId = await requireUser(ctx, args.apiKey);
+    const allBills = await ctx.db
+      .query("bills")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    let patched = 0,
+      alreadySet = 0;
+    const now = Date.now();
+    for (const bill of allBills) {
+      if (bill.isPaused !== undefined && bill.isPaused !== null) {
+        alreadySet++;
+        continue;
+      }
+      await ctx.db.patch(bill._id, { isPaused: false, updatedAt: now });
+      patched++;
+    }
+    return { totalBills: allBills.length, patched, alreadySet };
   },
 });
 
 // ──────────────────────────────────────────────────────────────
-//  🆕 MIGRATION — Paid bills → "Cash"
-//
-//  For every bill belonging to the caller:
-//    • If isPaid AND paymentMethodRaw is missing → set to "Cash"
-//    • If isPaid AND paymentMethodRaw === "Other" → set to "Cash"
-//    • If isPaid AND paymentMethodRaw is an explicit method (M-Pesa,
-//      Bank, Card, Cheque, Airtel Money, Cash) → leave untouched
-//    • If NOT paid AND paymentMethodRaw is missing → fill with "Other"
-//      (harmless placeholder; user will set it when they mark it paid)
-//
-//  Idempotent. Safe to run multiple times. Delete after use.
-//
-//  Run via dashboard or script:
-//    rentaman:migrationPaidBillsToCash  { "apiKey": "..." }
+//  MIGRATION — Paid bills → "Cash"
 // ──────────────────────────────────────────────────────────────
 export const migrationPaidBillsToCash = mutation({
   args: { apiKey: v.string() },
   handler: async (ctx, args) => {
     const ownerId = await requireUser(ctx, args.apiKey);
-
     const allBills = await ctx.db
       .query("bills")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
       .collect();
-
     const now = Date.now();
-    let convertedToCash = 0;
-    let alreadyCash = 0;
-    let keptExplicitMethod = 0;
-    let unpaidFilledWithOther = 0;
-
+    let convertedToCash = 0,
+      alreadyCash = 0,
+      keptExplicitMethod = 0,
+      unpaidFilledWithOther = 0;
     for (const bill of allBills) {
       const current = bill.paymentMethodRaw;
-
       if (bill.isPaid) {
         if (current === undefined || current === null || current === "Other") {
           await ctx.db.patch(bill._id, {
@@ -499,21 +548,16 @@ export const migrationPaidBillsToCash = mutation({
         } else if (current === "Cash") {
           alreadyCash++;
         } else {
-          // Explicit method chosen by the user (M-Pesa, Bank, etc.) — respect it.
           keptExplicitMethod++;
         }
-      } else {
-        // Unpaid: just ensure field is never missing so old docs stay consistent.
-        if (current === undefined || current === null) {
-          await ctx.db.patch(bill._id, {
-            paymentMethodRaw: "Other",
-            updatedAt: now,
-          });
-          unpaidFilledWithOther++;
-        }
+      } else if (current === undefined || current === null) {
+        await ctx.db.patch(bill._id, {
+          paymentMethodRaw: "Other",
+          updatedAt: now,
+        });
+        unpaidFilledWithOther++;
       }
     }
-
     return {
       totalBills: allBills.length,
       convertedToCash,
@@ -525,22 +569,19 @@ export const migrationPaidBillsToCash = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  DIAGNOSTIC — verify what's on the server
+//  DIAGNOSTIC — Payment methods
 // ──────────────────────────────────────────────────────────────
 export const diagnosticsPaymentMethods = query({
   args: { apiKey: v.string() },
   handler: async (ctx, args) => {
     const ownerId = await requireUser(ctx, args.apiKey);
-
     const allBills = await ctx.db
       .query("bills")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
       .collect();
-
     const counts: Record<string, number> = {};
-    let paidMissing = 0;
-    let unpaidMissing = 0;
-
+    let paidMissing = 0,
+      unpaidMissing = 0;
     for (const bill of allBills) {
       const current = bill.paymentMethodRaw;
       if (current === undefined || current === null) {
@@ -551,7 +592,6 @@ export const diagnosticsPaymentMethods = query({
         counts[key] = (counts[key] ?? 0) + 1;
       }
     }
-
     return {
       totalBills: allBills.length,
       paidMissingPaymentMethod: paidMissing,
@@ -562,7 +602,62 @@ export const diagnosticsPaymentMethods = query({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  ONE-TIME MIGRATION — Fix property references
+//  DIAGNOSTIC — Paused recurring bills
+// ──────────────────────────────────────────────────────────────
+export const diagnosticsPausedBills = query({
+  args: { apiKey: v.string() },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+    const allBills = await ctx.db
+      .query("bills")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    let recurringActive = 0,
+      recurringPaused = 0,
+      recurringMissingFlag = 0;
+    for (const bill of allBills) {
+      if (!bill.isRecurring) continue;
+      if (bill.isPaused === undefined || bill.isPaused === null)
+        recurringMissingFlag++;
+      else if (bill.isPaused) recurringPaused++;
+      else recurringActive++;
+    }
+    return {
+      totalBills: allBills.length,
+      recurringActive,
+      recurringPaused,
+      recurringMissingFlag,
+    };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  DIAGNOSTIC — Soft delete state
+// ──────────────────────────────────────────────────────────────
+export const diagnosticsDeletedBills = query({
+  args: { apiKey: v.string() },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+    const all = await ctx.db
+      .query("bills")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    let live = 0,
+      deleted = 0,
+      deletedMissingTimestamp = 0;
+    for (const b of all) {
+      if (b.deleted) {
+        deleted++;
+        if (b.deletedAt === undefined || b.deletedAt === null)
+          deletedMissingTimestamp++;
+      } else live++;
+    }
+    return { totalBills: all.length, live, deleted, deletedMissingTimestamp };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  MIGRATION — Fix property references
 // ──────────────────────────────────────────────────────────────
 export const migrationFixPropertyRefs = mutation({
   args: {

@@ -13,12 +13,19 @@ final class Bill {
     var notes: String?
     var receiptIdentifier: String?
 
-    // NEW: Recurring metadata
+    // Recurring metadata
     var isRecurring: Bool = false
     var recurringFrequencyRaw: String = RecurringFrequency.none.rawValue
 
-    // NEW: Payment method (stored raw string; default "Other")
+    // Pause recurring generation
+    var isPaused: Bool = false
+
+    // Payment method (raw string; default "Other")
     var paymentMethodRaw: String = PaymentMethod.other.rawValue
+
+    // Soft delete
+    var isDeleted: Bool = false
+    var deletedAt: Date? = nil
 
     var syncStatusRaw: String
     var updatedAt: Date
@@ -54,7 +61,8 @@ final class Bill {
         isPaid: Bool = false,
         property: Property? = nil,
         isRecurring: Bool = false,
-        recurringFrequency: RecurringFrequency = .none
+        recurringFrequency: RecurringFrequency = .none,
+        isPaused: Bool = false
     ) {
         self.amount = max(0, amount)
         self.id = id
@@ -65,7 +73,10 @@ final class Bill {
         self.property = property
         self.isRecurring = isRecurring
         self.recurringFrequencyRaw = recurringFrequency.rawValue
+        self.isPaused = isPaused
         self.paymentMethodRaw = PaymentMethod.other.rawValue
+        self.isDeleted = false
+        self.deletedAt = nil
         self.updatedAt = Date()
         self.syncStatusRaw = SyncStatus.pendingUpload.rawValue
 

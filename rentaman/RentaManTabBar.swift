@@ -3,11 +3,11 @@ import SwiftUI
 // MARK: - App Tabs
 enum AppTab: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
-    case bills = "Bills"
-    case impact = "Impact"
-    case reports = "Reports"
-    case profile = "Profile"
-    case settings = "Settings"
+    case bills     = "Bills"
+    case impact    = "Impact"
+    case reports   = "Reports"
+    case profile   = "Profile"
+    case settings  = "Settings"
 
     var id: String { rawValue }
 
@@ -42,81 +42,97 @@ final class AppNavigation {
     private init() {}
 }
 
-// MARK: - Native Bottom Tab Bar
-struct RentaManTabBar: View {
+// MARK: - Sidebar
+struct RentaManSidebar: View {
     @Binding var selection: AppTab
+    @Environment(AuthService.self) private var auth
+
+    private var subtitle: String {
+        if case .signedIn(let email, _) = auth.state { return email }
+        return "Not signed in"
+    }
+
+    private var mainTabs: [AppTab] { [.dashboard, .bills, .impact, .reports, .profile] }
+    private var bottomTabs: [AppTab] { [.settings] }
+
+    /// SwiftUI's `List(selection:)` wants an optional binding for single
+    /// selection. We wrap our non-optional `AppTab` in one.
+    private var listSelection: Binding<AppTab?> {
+        Binding(
+            get: { selection },
+            set: { newValue in
+                if let newValue { selection = newValue }
+            }
+        )
+    }
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(AppTab.allCases) { tab in
-                NativeTabButton(
-                    tab: tab,
-                    isSelected: selection == tab
-                ) {
-                    guard selection != tab else { return }
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        selection = tab
+        VStack(spacing: 0) {
+            // Traffic-light strip (also draggable)
+            WindowDragHandle()
+                .frame(height: 38)
+
+            // Brand header
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(RMDesign.accentGradient)
+                        .frame(width: 28, height: 28)
+                        .shadow(color: Color.blue.opacity(0.25), radius: 4, y: 2)
+                    Image(systemName: "house.lodge.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("RentaMan")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
+
+            // Navigation list
+            List(selection: listSelection) {
+                Section {
+                    ForEach(mainTabs) { tab in
+                        sidebarRow(tab)
+                    }
+                }
+
+                Section {
+                    ForEach(bottomTabs) { tab in
+                        sidebarRow(tab)
                     }
                 }
             }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
         }
-        .padding(5)
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.12), radius: 24, y: 8)
-                .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
-        }
+        .background(.regularMaterial)
     }
-}
 
-// MARK: - Native Tab Button
-private struct NativeTabButton: View {
-    let tab: AppTab
-    let isSelected: Bool
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
-                    .font(.system(size: 16, weight: .regular))
-                    .symbolRenderingMode(.hierarchical)
-                    .frame(height: 18)
-
-                Text(tab.rawValue)
-                    .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-            .frame(width: 80, height: 52)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.14))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.accentColor.opacity(0.2), lineWidth: 0.5)
-                        )
-                } else if isHovered {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    // MARK: - Row
+    @ViewBuilder
+    private func sidebarRow(_ tab: AppTab) -> some View {
+        Label {
+            Text(tab.rawValue)
+                .font(.system(size: 13, weight: selection == tab ? .semibold : .regular))
+        } icon: {
+            Image(systemName: selection == tab ? tab.selectedIcon : tab.icon)
+                .font(.system(size: 13))
+                .foregroundStyle(selection == tab ? Color.accentColor : .secondary)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                isHovered = hovering
-            }
-        }
-        .help(tab.rawValue)
+        .tag(tab)
+        .contentShape(Rectangle())
     }
 }

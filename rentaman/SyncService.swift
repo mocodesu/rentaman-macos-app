@@ -168,7 +168,6 @@ final class SyncService {
 
     @MainActor
     func requestRepair() {
-        print("🔧 [Sync] Requesting repair — will reprocess next incoming payload")
         Task { await forceSync() }
     }
 
@@ -176,8 +175,6 @@ final class SyncService {
     private func startRealtimeSubscriptions() {
         guard let client = client, let apiKey = apiKey else { return }
         guard propertiesSubscription == nil, billsSubscription == nil else { return }
-
-        print("📡 [Sync] Starting live subscriptions")
 
         let args: [String: ConvexEncodable?] = ["apiKey": apiKey]
 
@@ -187,8 +184,7 @@ final class SyncService {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     guard let self = self else { return }
-                    if case .failure(let err) = completion {
-                        print("❌ [Sync] Properties stream failed: \(err)")
+                    if case .failure(_) = completion {
                         self.propertiesSubscription = nil
                         self.isLive = false
                         self.state = .error("Live properties stream failed")
@@ -206,8 +202,7 @@ final class SyncService {
             .sink(
                 receiveCompletion: { [weak self] completion in
                     guard let self = self else { return }
-                    if case .failure(let err) = completion {
-                        print("❌ [Sync] Bills stream failed: \(err)")
+                    if case .failure(_) = completion {
                         self.billsSubscription = nil
                         self.isLive = false
                         self.state = .error("Live bills stream failed")
@@ -237,15 +232,13 @@ final class SyncService {
         }
     }
 
-    // MARK: - Incoming coalescing
+    // MARK: - Incoming
     private func handlePropertiesPayload(_ props: [RemoteProperty]) {
-        print("📡 [Sync] Received \(props.count) properties from stream")
         incomingProperties = props
         scheduleIncomingProcessing()
     }
 
     private func handleBillsPayload(_ bills: [RemoteBill]) {
-        print("📡 [Sync] Received \(bills.count) bills from stream")
         incomingBills = bills
         scheduleIncomingProcessing()
     }
@@ -264,20 +257,17 @@ final class SyncService {
     private func processIncomingPayloads() async {
         guard let context = modelContext else { return }
 
-        // 1. Properties first — insert/update and COMMIT so bills can query them.
         if let props = incomingProperties {
             incomingProperties = nil
             for prop in props { _ = upsertLocalProperty(prop, context: context) }
             try? context.save()
         }
 
-        // 2. Bills.
         if let bills = incomingBills {
             incomingBills = nil
             for bill in bills { upsertLocalBill(bill, context: context) }
         }
 
-        // 3. Retry orphans (may need to fetch properties from server).
         await retryOrphanBills(context: context)
 
         try? context.save()
@@ -309,11 +299,8 @@ final class SyncService {
                 let newLocal = upsertLocalProperty(remote, context: context)
                 resolved[propId] = newLocal
                 try? context.save()
-                print("✅ [Sync] On-demand fetched property \(propId) from server")
                 continue
             }
-            let localIds = (try? context.fetch(FetchDescriptor<Property>()))?.map { $0.id } ?? []
-            print("❌ [Sync] Property \(propId) not found locally (\(localIds.count) local props: \(localIds)) nor on server")
         }
 
         for (propId, bills) in grouped {
@@ -329,10 +316,7 @@ final class SyncService {
 
     private func fetchPropertyFromServer(id: String) async -> RemoteProperty? {
         guard let client = client, let apiKey = apiKey else { return nil }
-        let args: [String: ConvexEncodable?] = [
-            "apiKey": apiKey,
-            "externalId": id,
-        ]
+        let args: [String: ConvexEncodable?] = ["apiKey": apiKey, "externalId": id]
         do {
             let publisher = client.subscribe(
                 to: "rentaman:getPropertyByExternalId",
@@ -341,7 +325,6 @@ final class SyncService {
             )
             return try await publisher.firstValue()
         } catch {
-            print("❌ [Sync] Server fetch for property \(id) failed: \(error)")
             return nil
         }
     }
@@ -370,7 +353,7 @@ final class SyncService {
         }
     }
 
-    // MARK: - Push (batched)
+    // MARK: - Push
     private func pushLocalChanges() async {
         guard let context = modelContext,
               let client = client,
@@ -389,7 +372,6 @@ final class SyncService {
                 FetchDescriptor<Property>(predicate: #Predicate { $0.syncStatusRaw != "synced" })
             )
         } catch {
-            print("❌ [Sync] Fetch failed: \(error)")
             await MainActor.run { self.state = .error("Fetch failed") }
             return
         }
@@ -415,10 +397,8 @@ final class SyncService {
                 try await batchUpsertProperties(propsToPush, client: client, apiKey: apiKey)
                 for prop in propsToPush { prop.syncStatus = .synced }
                 try? context.save()
-                print("✅ [Sync] Batch pushed \(propsToPush.count) properties")
             } catch {
                 failures.append("Properties: \(error.localizedDescription)")
-                print("❌ [Sync] Property batch failed: \(error)")
             }
         }
 
@@ -428,19 +408,14 @@ final class SyncService {
                 return prop.syncStatus == .synced
             }
             let deferred = billsToPush.count - ready.count
-            if deferred > 0 {
-                print("⏳ [Sync] Deferring \(deferred) bills until their properties are synced")
-            }
 
             if !ready.isEmpty {
                 do {
                     try await batchUpsertBills(ready, client: client, apiKey: apiKey)
                     for bill in ready { bill.syncStatus = .synced }
                     try? context.save()
-                    print("✅ [Sync] Batch pushed \(ready.count) bills")
                 } catch {
                     failures.append("Bills: \(error.localizedDescription)")
-                    print("❌ [Sync] Bill batch failed: \(error)")
                 }
             }
 
@@ -453,10 +428,8 @@ final class SyncService {
             do {
                 try await batchDeleteBills(billDeletes, client: client, apiKey: apiKey)
                 pendingBillDeletes.subtract(billDeletes)
-                print("✅ [Sync] Batch deleted \(billDeletes.count) bills")
             } catch {
                 failures.append("Bill deletes: \(error.localizedDescription)")
-                print("❌ [Sync] Bill batch delete failed: \(error)")
             }
         }
 
@@ -464,10 +437,8 @@ final class SyncService {
             do {
                 try await batchDeleteProperties(propDeletes, client: client, apiKey: apiKey)
                 pendingPropertyDeletes.subtract(propDeletes)
-                print("✅ [Sync] Batch deleted \(propDeletes.count) properties")
             } catch {
                 failures.append("Property deletes: \(error.localizedDescription)")
-                print("❌ [Sync] Property batch delete failed: \(error)")
             }
         }
 
@@ -486,7 +457,7 @@ final class SyncService {
         }
     }
 
-    // MARK: - Batch network calls (JSON-encoded)
+    // MARK: - Batch network calls
     private func batchUpsertProperties(
         _ properties: [Property],
         client: ConvexClient,
@@ -507,10 +478,9 @@ final class SyncService {
             return dict
         }
 
-        let json = Self.encodeJSON(items)
         let payload: [String: ConvexEncodable?] = [
             "apiKey": apiKey,
-            "itemsJson": json,
+            "itemsJson": Self.encodeJSON(items),
         ]
         let _: BatchMutationResponse = try await client.mutation(
             "rentaman:batchUpsertProperties",
@@ -533,6 +503,8 @@ final class SyncService {
                 "dueDate": bill.dueDate.timeIntervalSince1970 * 1000,
                 "isPaid": bill.isPaid,
                 "isRecurring": bill.isRecurring,
+                "isPaused": bill.isPaused,
+                "isDeleted": bill.isDeleted,
                 "recurringFrequencyRaw": bill.recurringFrequencyRaw,
                 "paymentMethodRaw": bill.paymentMethodRaw,
                 "propertyExternalId": propertyId,
@@ -540,6 +512,9 @@ final class SyncService {
             ]
             if let paymentDate = bill.paymentDate {
                 dict["paymentDate"] = paymentDate.timeIntervalSince1970 * 1000
+            }
+            if let deletedAt = bill.deletedAt {
+                dict["deletedAt"] = deletedAt.timeIntervalSince1970 * 1000
             }
             if let notes = bill.notes, !notes.isEmpty {
                 dict["notes"] = notes
@@ -552,10 +527,9 @@ final class SyncService {
 
         guard !items.isEmpty else { return }
 
-        let json = Self.encodeJSON(items)
         let payload: [String: ConvexEncodable?] = [
             "apiKey": apiKey,
-            "itemsJson": json,
+            "itemsJson": Self.encodeJSON(items),
         ]
         let _: BatchMutationResponse = try await client.mutation(
             "rentaman:batchUpsertBills",
@@ -604,7 +578,7 @@ final class SyncService {
         return str
     }
 
-    // MARK: - Local upserts (from incoming stream)
+    // MARK: - Local upserts
     @discardableResult
     private func upsertLocalProperty(_ remote: RemoteProperty, context: ModelContext) -> Property {
         let remoteId = remote.externalId
@@ -645,6 +619,11 @@ final class SyncService {
         let remotePropertyId = remote.propertyExternalId
         let remoteDate = Date(timeIntervalSince1970: remote.updatedAt / 1000)
         let resolvedMethod = Self.resolvedPaymentMethod(from: remote)
+        let resolvedPaused = remote.isPaused ?? false
+        let resolvedDeleted = remote.isDeleted ?? false
+        let resolvedDeletedAt = remote.deletedAt.map {
+            Date(timeIntervalSince1970: $0 / 1000)
+        }
 
         let descriptor = FetchDescriptor<Bill>(predicate: #Predicate { $0.id == remoteId })
         let existing = try? context.fetch(descriptor).first
@@ -673,6 +652,9 @@ final class SyncService {
             existing.notes = remote.notes
             existing.isRecurring = remote.isRecurring
             existing.recurringFrequencyRaw = remote.recurringFrequencyRaw
+            existing.isPaused = resolvedPaused
+            existing.isDeleted = resolvedDeleted
+            existing.deletedAt = resolvedDeletedAt
             existing.updatedAt = remoteDate
             existing.syncStatus = .synced
         } else {
@@ -690,26 +672,20 @@ final class SyncService {
                 isPaid: remote.isPaid,
                 property: property,
                 isRecurring: remote.isRecurring,
-                recurringFrequency: RecurringFrequency(rawValue: remote.recurringFrequencyRaw) ?? .none
+                recurringFrequency: RecurringFrequency(rawValue: remote.recurringFrequencyRaw) ?? .none,
+                isPaused: resolvedPaused
             )
             newBill.notes = remote.notes
             newBill.paymentDate = remote.paymentDate.map { Date(timeIntervalSince1970: $0 / 1000) }
             newBill.paymentMethodRaw = resolvedMethod
+            newBill.isDeleted = resolvedDeleted
+            newBill.deletedAt = resolvedDeletedAt
             newBill.updatedAt = remoteDate
             newBill.syncStatus = .synced
             context.insert(newBill)
         }
     }
 
-    /// Picks the payment method to store locally when ingesting a remote bill.
-    ///
-    /// - If the server sent a method, use it verbatim.
-    /// - If the server sent nothing:
-    ///     • Paid bills default to `.cash`
-    ///     • Unpaid bills default to `.other`
-    ///
-    /// This auto-heals legacy rows that predate the payment-method feature
-    /// and matches the "existing paid bills should be Cash" policy.
     private static func resolvedPaymentMethod(from remote: RemoteBill) -> String {
         if let raw = remote.paymentMethodRaw, !raw.isEmpty {
             return raw
@@ -725,8 +701,23 @@ final class SyncService {
         return all.first(where: { $0.id == id })
     }
 
-    // MARK: - Deletes (queued → batched)
+    // MARK: - Deletes
+    /// Legacy hard-delete — not used by UI anymore.
     func deleteBill(_ bill: Bill) async {
+        await MainActor.run {
+            if let context = modelContext {
+                let id = bill.id
+                context.delete(bill)
+                try? context.save()
+                pendingBillDeletes.insert(id)
+            }
+        }
+        schedulePush()
+    }
+
+    /// PERMANENT purge — removes from local store AND sends a hard
+    /// tombstone via `batchDeleteBills`. Used by `BillTrashView`.
+    func permanentlyDeleteBill(_ bill: Bill) async {
         await MainActor.run {
             if let context = modelContext {
                 let id = bill.id
@@ -760,7 +751,6 @@ final class SyncService {
             ConvexConfig.retryBaseSeconds * pow(2, Double(retryAttempt - 1)),
             ConvexConfig.retryMaxSeconds
         )
-        print("⏳ [Sync] Retrying in \(Int(delay))s (attempt \(retryAttempt))")
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             await self?.pushLocalChanges()
@@ -792,6 +782,9 @@ struct RemoteBill: Decodable, Hashable {
     let isRecurring: Bool
     let recurringFrequencyRaw: String
     let paymentMethodRaw: String?
+    let isPaused: Bool?
+    let isDeleted: Bool?
+    let deletedAt: Double?
     let propertyExternalId: String
     let updatedAt: Double
 }

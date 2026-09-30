@@ -291,7 +291,8 @@ struct BillImpactAnalytics {
 struct BillImpactView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
     @Environment(\.dismiss) private var dismiss
-    @Query private var allBills: [Bill]
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+private var allBills: [Bill]
 
     @State private var window: ImpactWindow = .twelve
     @State private var selectedCategory: ExpenseCategory? = nil

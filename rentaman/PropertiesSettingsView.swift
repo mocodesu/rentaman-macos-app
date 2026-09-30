@@ -98,7 +98,7 @@ struct PropertiesSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { property in
-            Text("This will permanently remove **\(property.name)** and all \(property.bills.count) bill(s) associated with it. This action cannot be undone.")
+            Text("This will permanently remove **\(property.name)** and all \(property.bills.filter { !$0.isDeleted }.count) bill(s) associated with it. This action cannot be undone.")
         }
     }
     
@@ -156,7 +156,7 @@ struct PropertySettingsRow: View {
                 }
                 
                 HStack(spacing: 12) {
-                    Label("\(property.bills.count) bill\(property.bills.count == 1 ? "" : "s")", systemImage: "doc.text")
+                  Label("\(property.bills.filter { !$0.isDeleted }.count) bill\(property.bills.filter { !$0.isDeleted }.count == 1 ? "" : "s")", systemImage: "doc.text")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     

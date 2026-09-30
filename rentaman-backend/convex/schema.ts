@@ -38,10 +38,12 @@ export default defineSchema({
     receiptIdentifier: v.optional(v.string()),
     isRecurring: v.boolean(),
     recurringFrequencyRaw: v.string(),
-    paymentMethodRaw: v.optional(v.string()), // ← Payment method tracking
+    isPaused: v.optional(v.boolean()),
+    paymentMethodRaw: v.optional(v.string()),
+    deleted: v.boolean(),
+    deletedAt: v.optional(v.number()),
     propertyExternalId: v.string(),
     updatedAt: v.number(),
-    deleted: v.boolean(),
     ownerId: v.optional(v.string()),
   })
     .index("by_externalId", ["externalId"])

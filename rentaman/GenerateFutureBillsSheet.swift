@@ -14,9 +14,8 @@ struct FutureBillsGenerator {
         let frequency: RecurringFrequency
         let lastDueDate: Date
         let instanceCount: Int
+        let isPaused: Bool     // 🆕
 
-        /// If the source bill is marked recurring but has no frequency
-        /// (e.g. the seeded Water bills), fall back to monthly.
         var effectiveFrequency: RecurringFrequency {
             frequency == .none ? .monthly : frequency
         }
@@ -52,10 +51,15 @@ struct FutureBillsGenerator {
                 property: newest.property,
                 frequency: newest.recurringFrequency,
                 lastDueDate: newest.dueDate,
-                instanceCount: group.count
+                instanceCount: group.count,
+                isPaused: newest.isPaused
             )
         }
         .sorted { lhs, rhs in
+            // Active templates before paused ones
+            if lhs.isPaused != rhs.isPaused {
+                return !lhs.isPaused
+            }
             if lhs.title.lowercased() == rhs.title.lowercased() {
                 return (lhs.property?.name ?? "") < (rhs.property?.name ?? "")
             }
@@ -64,9 +68,6 @@ struct FutureBillsGenerator {
     }
 
     // MARK: - Canonical cycle day
-    /// The real day-of-month a template cycles on.
-    /// Seeded bills use day 1 as a "month marker" — the actual cycle is
-    /// the 5th. Any other day is used as-is.
     static func anchorDay(for template: Template) -> Int {
         let rawDay = Calendar.current.component(.day, from: template.lastDueDate)
         return rawDay <= 1 ? 5 : rawDay
@@ -80,7 +81,10 @@ struct FutureBillsGenerator {
         periodsForward: Int,
         context: ModelContext
     ) -> GenerationResult {
-        guard !templates.isEmpty, periodsForward > 0 else {
+        // 🆕 Exclude paused templates defensively.
+        let activeTemplates = templates.filter { !$0.isPaused }
+
+        guard !activeTemplates.isEmpty, periodsForward > 0 else {
             return GenerationResult(
                 created: 0, skipped: 0,
                 createdTitles: [], skippedTitles: [],
@@ -91,7 +95,6 @@ struct FutureBillsGenerator {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
 
-        // Dedup index
         let allDescriptor = FetchDescriptor<Bill>()
         let allBills = (try? context.fetch(allDescriptor)) ?? []
         var existingKeys = Set<String>()
@@ -109,7 +112,7 @@ struct FutureBillsGenerator {
         var firstDate: Date? = nil
         var lastDate: Date? = nil
 
-        for template in templates {
+        for template in activeTemplates {
             let freq = template.effectiveFrequency
             let targetDay = anchorDay(for: template)
 
@@ -124,7 +127,6 @@ struct FutureBillsGenerator {
             var createdForThisTemplate = 0
 
             while createdForThisTemplate < periodsForward {
-                // Defensive: cursor should always be in the future
                 if calendar.startOfDay(for: cursor) <= startOfToday {
                     guard let next = advance(cursor, by: freq, calendar: calendar) else { break }
                     cursor = reanchor(next, toDay: targetDay, calendar: calendar) ?? next
@@ -184,13 +186,6 @@ struct FutureBillsGenerator {
     }
 
     // MARK: - Next future cycle
-    /// Earliest strictly-future cycle date for the template.
-    ///
-    /// - Monthly/quarterly/yearly → anchored to `anchorDay` in the current
-    ///   month; if that date has passed, steps forward by the cycle length
-    ///   until it exceeds today.
-    /// - Weekly → walks the template forward one week at a time, skipping
-    ///   past dates.
     private static func nextFutureCycle(
         template: Template,
         freq: RecurringFrequency,
@@ -240,14 +235,14 @@ struct FutureBillsGenerator {
         return nil
     }
 
-    // MARK: - Preview (used by the sheet's summary card)
+    // MARK: - Preview
     static func previewFirstDate(
         templates: [Template],
         calendar: Calendar = .current
     ) -> Date? {
         let today = calendar.startOfDay(for: Date())
         var earliest: Date? = nil
-        for template in templates {
+        for template in templates where !template.isPaused {
             let freq = template.effectiveFrequency
             let day = anchorDay(for: template)
             if let d = nextFutureCycle(
@@ -286,8 +281,6 @@ struct FutureBillsGenerator {
         }
     }
 
-    /// Force a date onto a specific day-of-month, keeping its year/month.
-    /// Prevents drift when a step lands on the 28th/30th/31st.
     private static func reanchor(
         _ date: Date,
         toDay day: Int,
@@ -305,7 +298,8 @@ struct GenerateFutureBillsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appCurrency) private var currency: AppCurrency
-    @Query private var allBills: [Bill]
+   @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+private var allBills: [Bill]
 
     @State private var periodsForward: Int = 6
     @State private var selectedIds: Set<String> = []
@@ -315,8 +309,16 @@ struct GenerateFutureBillsSheet: View {
         FutureBillsGenerator.templates(from: allBills)
     }
 
+    private var activeTemplates: [FutureBillsGenerator.Template] {
+        templates.filter { !$0.isPaused }
+    }
+
+    private var pausedTemplates: [FutureBillsGenerator.Template] {
+        templates.filter { $0.isPaused }
+    }
+
     private var selectedTemplates: [FutureBillsGenerator.Template] {
-        templates.filter { selectedIds.contains($0.id) }
+        activeTemplates.filter { selectedIds.contains($0.id) }
     }
 
     private var projectedNewCount: Int {
@@ -358,7 +360,7 @@ struct GenerateFutureBillsSheet: View {
         }
         .frame(width: 640, height: 680)
         .onAppear {
-            selectedIds = Set(templates.map { $0.id })
+            selectedIds = Set(activeTemplates.map { $0.id })
         }
     }
 
@@ -489,100 +491,151 @@ struct GenerateFutureBillsSheet: View {
             Text("Recurring bills detected")
                 .font(.system(size: 13, weight: .semibold))
             Spacer()
-            Button(selectedIds.count == templates.count ? "Deselect all" : "Select all") {
-                if selectedIds.count == templates.count {
+            Button(selectedIds.count == activeTemplates.count ? "Deselect all" : "Select all") {
+                if selectedIds.count == activeTemplates.count {
                     selectedIds.removeAll()
                 } else {
-                    selectedIds = Set(templates.map { $0.id })
+                    selectedIds = Set(activeTemplates.map { $0.id })
                 }
             }
             .font(.system(size: 11, weight: .medium))
             .buttonStyle(.plain)
             .foregroundStyle(.blue)
+            .disabled(activeTemplates.isEmpty)
         }
     }
 
     // MARK: - List
     private var templatesList: some View {
         VStack(spacing: 6) {
-            ForEach(templates) { template in
-                let isSelected = selectedIds.contains(template.id)
-                let day = FutureBillsGenerator.anchorDay(for: template)
+            ForEach(activeTemplates) { template in
+                templateRow(template, enabled: true)
+            }
 
-                Button {
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        if isSelected {
-                            selectedIds.remove(template.id)
-                        } else {
-                            selectedIds.insert(template.id)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 16))
-                            .foregroundStyle(isSelected ? .blue : .secondary)
-
-                        Image(systemName: template.category.iconName)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(template.category.color)
-                            .frame(width: 28, height: 28)
-                            .background(template.category.color.opacity(0.12))
-                            .cornerRadius(7)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(template.title)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            HStack(spacing: 6) {
-                                if let prop = template.property {
-                                    Text(prop.name)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                    Text("·")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                // 🆕 Show the anchored cycle day
-                                Text("day \(day)")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.blue)
-                                Text("·")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
-                                Text(template.effectiveFrequency.rawValue)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
-                                Text("·")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
-                                Text("last \(template.lastDueDate.formatted(.dateTime.month(.abbreviated).year(.twoDigits)))")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        Spacer()
-
-                        Text(CurrencyFormatter.format(template.amount, as: currency))
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.primary)
-                    }
-                    .padding(10)
-                    .background(isSelected ? Color.blue.opacity(0.04) : Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(9)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9)
-                            .stroke(isSelected ? Color.blue.opacity(0.3) : Color.gray.opacity(0.1),
-                                    lineWidth: isSelected ? 1.2 : 1)
-                    )
+            if !pausedTemplates.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "pause.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                    Text("Paused")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(pausedTemplates.count) skipped")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
+                .padding(.top, 10)
+                .padding(.horizontal, 4)
+
+                ForEach(pausedTemplates) { template in
+                    templateRow(template, enabled: false)
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private func templateRow(_ template: FutureBillsGenerator.Template, enabled: Bool) -> some View {
+        let isSelected = selectedIds.contains(template.id)
+        let day = FutureBillsGenerator.anchorDay(for: template)
+
+        Button {
+            guard enabled else { return }
+            withAnimation(.easeOut(duration: 0.12)) {
+                if isSelected {
+                    selectedIds.remove(template.id)
+                } else {
+                    selectedIds.insert(template.id)
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: enabled
+                      ? (isSelected ? "checkmark.circle.fill" : "circle")
+                      : "pause.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(enabled
+                                     ? (isSelected ? .blue : .secondary)
+                                     : .orange)
+
+                Image(systemName: template.category.iconName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(template.category.color)
+                    .frame(width: 28, height: 28)
+                    .background(template.category.color.opacity(0.12))
+                    .cornerRadius(7)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(template.title)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        if template.isPaused {
+                            Text("PAUSED")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.orange.gradient)
+                                .cornerRadius(3)
+                        }
+                    }
+                    HStack(spacing: 6) {
+                        if let prop = template.property {
+                            Text(prop.name)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Text("·")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                        }
+                        Text("day \(day)")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.blue)
+                        Text("·")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                        Text(template.effectiveFrequency.rawValue)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Text("·")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                        Text("last \(template.lastDueDate.formatted(.dateTime.month(.abbreviated).year(.twoDigits)))")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                Text(CurrencyFormatter.format(template.amount, as: currency))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+            }
+            .padding(10)
+            .background(enabled
+                        ? (isSelected ? Color.blue.opacity(0.04) : Color(NSColor.controlBackgroundColor))
+                        : Color.orange.opacity(0.04))
+            .cornerRadius(9)
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(
+                        enabled
+                            ? (isSelected ? Color.blue.opacity(0.3) : Color.gray.opacity(0.1))
+                            : Color.orange.opacity(0.25),
+                        lineWidth: enabled ? (isSelected ? 1.2 : 1) : 1
+                    )
+            )
+            .opacity(enabled ? 1.0 : 0.7)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     // MARK: - Result

@@ -126,7 +126,8 @@ struct TrendAnalytics {
 struct BillTrendView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appCurrency) private var currency: AppCurrency
-    @Query private var allBills: [Bill]
+   @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+private var allBills: [Bill]
 
     @State private var scope: TrendScope
     @State private var granularity: TrendGranularity = .month

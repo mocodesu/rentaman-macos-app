@@ -207,7 +207,8 @@ struct MonthlyBudgetAdvisor {
 struct BudgetRecommendationCard: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appCurrency) private var currency: AppCurrency
-    @Query private var allBills: [Bill]
+   @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+private var allBills: [Bill]
     @Query private var properties: [Property]
 
     @State private var window: BudgetWindow = .twelve

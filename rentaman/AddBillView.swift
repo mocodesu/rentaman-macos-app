@@ -185,6 +185,31 @@ struct AddBillView: View {
                                 }
                             }
                         }
+                        
+                        // 🆕 Pause toggle
+                        Toggle(isOn: $viewModel.isPaused) {
+                            HStack {
+                                Image(systemName: viewModel.isPaused ? "pause.circle.fill" : "pause.circle")
+                                    .foregroundStyle(viewModel.isPaused ? .orange : .secondary)
+                                Text("Pause future generation")
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        
+                        if viewModel.isPaused {
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.orange)
+                                Text("Paused bills are skipped by the Generate tool. History stays intact — unpause anytime to resume.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(8)
+                            .background(Color.orange.opacity(0.08))
+                            .cornerRadius(6)
+                        }
                     }
                 } header: {
                     Label("Recurring", systemImage: "arrow.triangle.2.circlepath.circle")
@@ -241,9 +266,8 @@ struct AddBillView: View {
             .padding(20)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        // ✅ Explicit frame — sheet adopts this size on macOS
         .frame(minWidth: 600, idealWidth: 600, maxWidth: 700,
-               minHeight: 700, idealHeight: 780, maxHeight: 900)
+               minHeight: 700, idealHeight: 800, maxHeight: 950)
         .onAppear {
             if let bill = billToEdit {
                 viewModel.loadFrom(bill)

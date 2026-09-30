@@ -12,7 +12,10 @@ private struct BillsStats {
 struct AllBillsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appCurrency) private var currency: AppCurrency
-    @Query private var allBills: [Bill]
+
+    // Only fetch bills that aren't in the trash
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+    private var allBills: [Bill]
     @Query private var properties: [Property]
 
     @State private var selection = Set<Bill.ID>()
@@ -24,12 +27,15 @@ struct AllBillsView: View {
     @State private var trendWrapper: TrendWrapper? = nil
     @State private var showGenerateFuture = false
 
-    // ── Cached derived data ──
+    // Undo state
+    @State private var undoState: UndoState? = nil
+
+    // Cached derived data
     @State private var cachedFiltered: [Bill] = []
     @State private var cachedPaged: [Bill] = []
     @State private var cachedStats: BillsStats = .zero
 
-    // ── Pagination ──
+    // Pagination
     @State private var currentPage: Int = 1
     @State private var pageSize: PageSize = .fifty
 
@@ -64,6 +70,19 @@ struct AllBillsView: View {
     struct TrendWrapper: Identifiable {
         let id: String
         let bill: Bill
+    }
+
+    struct UndoState: Identifiable, Equatable {
+        let id = UUID()
+        let billIds: [String]
+        let titles: [String]
+        let deletedAt: Date
+
+        var count: Int { billIds.count }
+        var summary: String {
+            if count == 1, let t = titles.first { return "\"\(t)\" moved to Trash" }
+            return "\(count) bills moved to Trash"
+        }
     }
 
     private var totalPages: Int {
@@ -115,6 +134,19 @@ struct AllBillsView: View {
             }
         }
         .background(RMDesign.pageBackground)
+        .overlay(alignment: .bottom) {
+            if let undo = undoState {
+                UndoToast(state: undo) {
+                    performUndo(undo)
+                } onDismiss: {
+                    withAnimation(.easeOut(duration: 0.2)) { undoState = nil }
+                }
+                .padding(.bottom, 100)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(50)
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: undoState)
         .sheet(item: $editingBillWrapper) { wrapper in
             AddBillView(billToEdit: wrapper.bill)
                 .environment(\.appCurrency, currency)
@@ -127,7 +159,6 @@ struct AllBillsView: View {
             GenerateFutureBillsSheet()
                 .environment(\.appCurrency, currency)
         }
-        // ── Cache invalidation ──
         .onAppear { recomputeAll() }
         .onChange(of: allBills.count)      { _, _ in recomputeAll() }
         .onChange(of: searchText)          { _, _ in currentPage = 1; recomputeAll() }
@@ -167,7 +198,6 @@ struct AllBillsView: View {
                 PropertyFilterMenu(properties: properties, selection: $selectedPropertyId)
                 StatusSegmentedControl(selection: $filterStatus)
 
-                // 🆕 Generate future recurring bills
                 Button {
                     showGenerateFuture = true
                 } label: {
@@ -196,7 +226,7 @@ struct AllBillsView: View {
 
     // MARK: - Cache
     private func recomputeAll() {
-        var result = allBills
+        var result = allBills.filter { !$0.isDeleted }  // belt + braces
         if let propId = selectedPropertyId {
             result = result.filter { $0.property?.id == propId }
         }
@@ -221,7 +251,6 @@ struct AllBillsView: View {
             if b.isPaid { s.paid += b.amount } else { s.unpaid += b.amount }
         }
         cachedStats = s
-
         recomputePaged()
     }
 
@@ -253,11 +282,51 @@ struct AllBillsView: View {
         recomputeAll()
     }
 
+    // SOFT DELETE — moves to trash instead of removing
     private func deleteBills(ids: Set<Bill.ID>) {
-        let toDelete = allBills.filter { ids.contains($0.id) }
-        for bill in toDelete {
-            Task { await SyncService.shared.deleteBill(bill) }
+        let targets = allBills.filter { ids.contains($0.id) }
+        guard !targets.isEmpty else { return }
+        let now = Date()
+        for bill in targets {
+            bill.isDeleted = true
+            bill.deletedAt = now
+            bill.syncStatus = .pendingUpload
+            bill.updatedAt = now
         }
+        try? modelContext.save()
+        SyncService.shared.schedulePush()
+
+        let undo = UndoState(
+            billIds: targets.map { $0.id },
+            titles: targets.map { $0.title },
+            deletedAt: now
+        )
+        withAnimation { undoState = undo }
+        selection.removeAll()
+        recomputeAll()
+    }
+
+    // UNDO — flip isDeleted back off
+    // `#Predicate` can't capture a runtime [String] or translate
+    // `array.contains(_:)` against a keypath, so we fetch and filter
+    // in memory. Trash toggles are tiny — this is instant.
+    private func performUndo(_ state: UndoState) {
+        let descriptor = FetchDescriptor<Bill>()
+        let all = (try? modelContext.fetch(descriptor)) ?? []
+        let idSet = Set(state.billIds)
+        let targets = all.filter { idSet.contains($0.id) }
+
+        let now = Date()
+        for bill in targets {
+            bill.isDeleted = false
+            bill.deletedAt = nil
+            bill.syncStatus = .pendingUpload
+            bill.updatedAt = now
+        }
+        try? modelContext.save()
+        SyncService.shared.schedulePush()
+        withAnimation(.easeOut(duration: 0.2)) { undoState = nil }
+        recomputeAll()
     }
 
     private func duplicateBills(ids: Set<Bill.ID>) {
@@ -272,7 +341,8 @@ struct AllBillsView: View {
                 isPaid: false,
                 property: bill.property,
                 isRecurring: bill.isRecurring,
-                recurringFrequency: bill.recurringFrequency
+                recurringFrequency: bill.recurringFrequency,
+                isPaused: bill.isPaused
             )
             copy.notes = bill.notes
             copy.receiptIdentifier = nil
@@ -297,6 +367,101 @@ struct AllBillsView: View {
         case .none:      comp = DateComponents(month: 1)
         }
         return cal.date(byAdding: comp, to: bill.dueDate) ?? bill.dueDate
+    }
+}
+
+// MARK: - Undo Toast
+private struct UndoToast: View {
+    let state: AllBillsView.UndoState
+    let onUndo: () -> Void
+    let onDismiss: () -> Void
+
+    @State private var progress: Double = 1.0
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "trash.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(Color.red.gradient)
+                .cornerRadius(8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.summary)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                Text("Tap Undo to restore")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Undo") {
+                onUndo()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .keyboardShortcut("z", modifiers: .command)
+            .help("Undo delete (⌘Z)")
+
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.red.opacity(0.28), lineWidth: 1)
+        )
+        .overlay(alignment: .bottomLeading) {
+            GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.red.opacity(0.45))
+                    .frame(width: geo.size.width * progress, height: 2)
+            }
+            .frame(height: 2)
+            .offset(y: -1)
+            .padding(.horizontal, 1)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 14, y: 5)
+        .frame(maxWidth: 480)
+        .padding(.horizontal, 24)
+        .task(id: state.id) {
+            progress = 1.0
+
+            let durationSeconds: Double = 6.0
+            let totalSteps: Int = 60
+            let totalNanos: Double = durationSeconds * 1_000_000_000.0
+            let nanosPerStep: Double = totalNanos / Double(totalSteps)
+            let stepDelay: UInt64 = UInt64(nanosPerStep)
+
+            for i in 1...totalSteps {
+                try? await Task.sleep(nanoseconds: stepDelay)
+                if Task.isCancelled { return }
+
+                let fraction: Double = Double(i) / Double(totalSteps)
+                let nextProgress: Double = 1.0 - fraction
+
+                await MainActor.run {
+                    withAnimation(.linear(duration: durationSeconds / Double(totalSteps))) {
+                        progress = nextProgress
+                    }
+                }
+            }
+
+            if !Task.isCancelled {
+                onDismiss()
+            }
+        }
     }
 }
 
@@ -336,16 +501,34 @@ private struct AllBillsTable: View {
             TableColumn("Title", value: \.title) { bill in
                 HStack(spacing: 8) {
                     if bill.isRecurring {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.blue)
-                            .help("Recurring: \(bill.recurringFrequency.rawValue)")
+                        if bill.isPaused {
+                            Image(systemName: "pause.circle.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.orange)
+                                .help("Paused recurring bill (\(bill.recurringFrequency.rawValue))")
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.blue)
+                                .help("Recurring: \(bill.recurringFrequency.rawValue)")
+                        }
                     }
+
                     Text(bill.title)
                         .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
 
-                    // Over-limit pill
+                    if bill.isRecurring && bill.isPaused {
+                        Text("PAUSED")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.gradient)
+                            .cornerRadius(3)
+                            .help("Recurring generation is paused")
+                    }
+
                     if let limit = BillLimits.shared.limit(for: bill.title),
                        bill.amount > limit {
                         Text("OVER")
@@ -391,7 +574,6 @@ private struct AllBillsTable: View {
             }
             .width(min: 110, ideal: 140)
 
-            // 🆕 Paid Via column
             TableColumn("Paid Via") { bill in
                 if bill.isPaid {
                     HStack(spacing: 5) {
@@ -497,7 +679,8 @@ private struct AllBillsTable: View {
                     { Label("Mark as Unpaid", systemImage: "circle") }
                 Divider()
                 Button(role: .destructive) { onDelete(selectedIds) } label:
-                    { Label("Delete", systemImage: "trash") }
+                    { Label(selectedIds.count == 1 ? "Move to Trash" : "Move \(selectedIds.count) to Trash",
+                            systemImage: "trash") }
             }
         }
     }

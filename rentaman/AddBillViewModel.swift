@@ -15,6 +15,7 @@ final class AddBillViewModel {
     var notes: String = ""
     var isRecurring: Bool = false
     var recurringFrequency: RecurringFrequency = .monthly
+    var isPaused: Bool = false
     var entryCurrency: AppCurrency = .ksh
 
     var editingBill: Bill? = nil
@@ -54,6 +55,7 @@ final class AddBillViewModel {
         notes = bill.notes ?? ""
         isRecurring = bill.isRecurring
         recurringFrequency = bill.recurringFrequency
+        isPaused = bill.isPaused
     }
 
     func prefillFromHistory(bills: [Bill], properties: [Property]) {
@@ -88,6 +90,7 @@ final class AddBillViewModel {
             existing.property = property
             existing.isRecurring = isRecurring
             existing.recurringFrequencyRaw = isRecurring ? recurringFrequency.rawValue : RecurringFrequency.none.rawValue
+            existing.isPaused = isRecurring ? isPaused : false
             existing.updatedAt = Date()
             existing.syncStatus = .pendingUpload
         } else {
@@ -99,7 +102,8 @@ final class AddBillViewModel {
                 isPaid: isPaid,
                 property: property,
                 isRecurring: isRecurring,
-                recurringFrequency: isRecurring ? recurringFrequency : .none
+                recurringFrequency: isRecurring ? recurringFrequency : .none,
+                isPaused: isRecurring ? isPaused : false
             )
             if isPaid { newBill.paymentDate = paymentDate }
             newBill.paymentMethodRaw = paymentMethod.rawValue
@@ -107,9 +111,7 @@ final class AddBillViewModel {
             context.insert(newBill)
         }
 
-        // 🔥 Trigger the debounced sync
         SyncService.shared.schedulePush()
-
         return true
     }
 
@@ -125,6 +127,7 @@ final class AddBillViewModel {
         notes = ""
         isRecurring = false
         recurringFrequency = .monthly
+        isPaused = false
         editingBill = nil
     }
 }

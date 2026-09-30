@@ -6,7 +6,8 @@ struct DashboardView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
     @Environment(SyncService.self) private var syncService
     @Query private var properties: [Property]
-    @Query private var allBills: [Bill]
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+private var allBills: [Bill]
 
     @State private var selectedPropertyId: String? = nil
     @State private var lastRefreshCheck: Date = Date()

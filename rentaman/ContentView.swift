@@ -29,72 +29,14 @@ struct ContentView: View {
         AppCurrency(rawValue: currencyRaw) ?? .ksh
     }
 
-    private let trafficLightWidth: CGFloat = 78
     private let headerHeight: CGFloat = 48
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                // ───── HEADER ─────
-                HStack(spacing: 0) {
-                    Spacer().frame(width: trafficLightWidth)
-
-                    RentaManToolbarLeading()
-
-                    Spacer(minLength: 20)
-
-                    HStack(spacing: 10) {
-                        RentaManSyncPill()
-                        RentaManCurrencyPicker()
-                        RentaManAddBillButton {
-                            isShowingAddBillSheet = true
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .frame(height: headerHeight)
-                .frame(maxWidth: .infinity)
-                .background {
-                    Rectangle().fill(.ultraThinMaterial)
-                }
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.18))
-                        .frame(height: 0.5)
-                }
-
-                // ───── TAB CONTENT ─────
-                Group {
-                    switch navigation.selectedTab {
-                    case .dashboard:
-                        DashboardView()
-                            .environment(\.appCurrency, currentCurrency)
-                    case .bills:
-                        AllBillsView()
-                            .environment(\.appCurrency, currentCurrency)
-                    case .impact:
-                        BillImpactView()
-                            .environment(\.appCurrency, currentCurrency)
-                    case .reports:
-                        ReportsView()
-                            .environment(\.appCurrency, currentCurrency)
-                    case .profile:
-                        ProfileView()
-                            .environment(\.appCurrency, currentCurrency)
-                    case .settings:
-                        SettingsTabView()
-                            .environment(\.appCurrency, currentCurrency)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.opacity)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    Color.clear.frame(height: 82)
-                }
-            }
-
-            // ───── FLOATING BOTTOM TAB BAR ─────
-            RentaManTabBar(selection: $navigation.selectedTab)
+        NavigationSplitView {
+            RentaManSidebar(selection: $navigation.selectedTab)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
+        } detail: {
+            detailContent
         }
         .frame(minWidth: 900, minHeight: 600)
         .animation(.easeInOut(duration: 0.2), value: navigation.selectedTab)
@@ -105,6 +47,61 @@ struct ContentView: View {
         .sheet(isPresented: $isShowingAddBillSheet) {
             AddBillView()
                 .environment(\.appCurrency, currentCurrency)
+        }
+    }
+
+    // MARK: - Detail
+    private var detailContent: some View {
+        VStack(spacing: 0) {
+            detailHeader
+
+            Group {
+                switch navigation.selectedTab {
+                case .dashboard:
+                    DashboardView()
+                        .environment(\.appCurrency, currentCurrency)
+                case .bills:
+                    AllBillsView()
+                        .environment(\.appCurrency, currentCurrency)
+                case .impact:
+                    BillImpactView()
+                        .environment(\.appCurrency, currentCurrency)
+                case .reports:
+                    ReportsView()
+                        .environment(\.appCurrency, currentCurrency)
+                case .profile:
+                    ProfileView()
+                        .environment(\.appCurrency, currentCurrency)
+                case .settings:
+                    SettingsTabView()
+                        .environment(\.appCurrency, currentCurrency)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.opacity)
+        }
+    }
+
+    // MARK: - Detail Header
+    private var detailHeader: some View {
+        HStack(spacing: 10) {
+            Spacer()
+            RentaManSyncPill()
+            RentaManCurrencyPicker()
+            RentaManAddBillButton {
+                isShowingAddBillSheet = true
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: headerHeight)
+        .frame(maxWidth: .infinity)
+        .background {
+            Rectangle().fill(.ultraThinMaterial)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.gray.opacity(0.18))
+                .frame(height: 0.5)
         }
     }
 }

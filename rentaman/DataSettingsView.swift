@@ -5,18 +5,22 @@ import UniformTypeIdentifiers
 struct DataSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var properties: [Property]
-    @Query private var bills: [Bill]
-    
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+    private var bills: [Bill]
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == true })
+    private var trashedBills: [Bill]
+
     @State private var isShowingResetConfirm = false
+    @State private var isShowingTrash = false
     @State private var exportStatus: ExportStatus = .idle
-    
+
     enum ExportStatus {
         case idle
         case exporting
         case success(URL)
         case failure(String)
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -27,8 +31,7 @@ struct DataSettingsView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
-                
-                // Stats
+
                 SettingsSection(title: "Database", subtitle: "Summary of stored records on this device.") {
                     HStack(spacing: 0) {
                         StatBlock(icon: "house.fill", color: .blue, value: "\(properties.count)", label: "Properties")
@@ -40,41 +43,57 @@ struct DataSettingsView: View {
                         StatBlock(icon: "clock.fill", color: .red, value: "\(bills.filter { !$0.isPaid }.count)", label: "Unpaid")
                     }
                 }
-                
-                // Backup
+
+                SettingsSection(
+                    title: "Trash",
+                    subtitle: "Deleted bills are kept here for 30 days before being permanently removed."
+                ) {
+                    SettingsRow(
+                        icon: "trash.fill",
+                        iconColor: .red,
+                        title: "Trash",
+                        subtitle: trashedBills.isEmpty
+                            ? "Empty"
+                            : "\(trashedBills.count) bill\(trashedBills.count == 1 ? "" : "s") waiting — auto-purge in \(daysUntilEarliestPurge) day\(daysUntilEarliestPurge == 1 ? "" : "s")"
+                    ) {
+                        Button {
+                            isShowingTrash = true
+                        } label: {
+                            Label("Open", systemImage: "arrow.up.forward.app")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(trashedBills.isEmpty)
+                    }
+                }
+
                 SettingsSection(title: "Backup & Restore", subtitle: "Export your data as JSON to keep a backup or move to another Mac.") {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "square.and.arrow.up.fill",
                             iconColor: .blue,
                             title: "Export Data",
-                            subtitle: "Save a JSON file with all properties and bills."
+                            subtitle: "Save a JSON file with all properties and bills (excludes trash)."
                         ) {
-                            Button("Export") {
-                                exportData()
-                            }
-                            .buttonStyle(.bordered)
+                            Button("Export") { exportData() }
+                                .buttonStyle(.bordered)
                         }
-                        
+
                         Divider().padding(.leading, 40).padding(.vertical, 4)
-                        
+
                         SettingsRow(
                             icon: "square.and.arrow.down.fill",
                             iconColor: .green,
                             title: "Import Data",
                             subtitle: "Restore from a previously exported JSON file."
                         ) {
-                            Button("Import") {
-                                // Import is a future feature
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(true)
-                            .help("Coming in a future update")
+                            Button("Import") { }
+                                .buttonStyle(.bordered)
+                                .disabled(true)
+                                .help("Coming in a future update")
                         }
                     }
                 }
-                
-                // Danger zone
+
                 SettingsSection(title: "Reset", subtitle: "Erase data on this device. Data synced to the cloud is not affected.") {
                     SettingsRow(
                         icon: "trash.fill",
@@ -82,22 +101,17 @@ struct DataSettingsView: View {
                         title: "Reset All Local Data",
                         subtitle: "Permanently remove all properties and bills from this Mac."
                     ) {
-                        Button("Reset…") {
-                            isShowingResetConfirm = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
+                        Button("Reset…") { isShowingResetConfirm = true }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
                     }
                 }
-                
-                // Export status
+
                 if case .success(let url) = exportStatus {
                     HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Export successful")
-                                .font(.system(size: 12, weight: .semibold))
+                            Text("Export successful").font(.system(size: 12, weight: .semibold))
                             Text(url.path)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
@@ -115,10 +129,8 @@ struct DataSettingsView: View {
                     .cornerRadius(10)
                 } else if case .failure(let msg) = exportStatus {
                     HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        Text(msg)
-                            .font(.system(size: 12))
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                        Text(msg).font(.system(size: 12))
                         Spacer()
                     }
                     .padding(12)
@@ -130,16 +142,25 @@ struct DataSettingsView: View {
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .sheet(isPresented: $isShowingTrash) {
+            BillTrashView()
+                .environment(\.appCurrency, .ksh)
+        }
         .alert("Reset all local data?", isPresented: $isShowingResetConfirm) {
-            Button("Reset", role: .destructive) {
-                resetAllData()
-            }
+            Button("Reset", role: .destructive) { resetAllData() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently remove **\(properties.count) propert\(properties.count == 1 ? "y" : "ies")** and **\(bills.count) bill\(bills.count == 1 ? "" : "s")** from this Mac. Data synced to the cloud will remain and can be re-downloaded on next launch.")
         }
     }
-    
+
+    private var daysUntilEarliestPurge: Int {
+        guard let earliest = trashedBills.compactMap({ $0.deletedAt }).min() else { return 30 }
+        let expiry = Calendar.current.date(byAdding: .day, value: 30, to: earliest) ?? Date()
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: expiry).day ?? 0
+        return max(0, days)
+    }
+
     private func exportData() {
         exportStatus = .exporting
         do {
@@ -148,17 +169,16 @@ struct DataSettingsView: View {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(export)
-            
+
             let fileName = "RentaMan_Backup_\(Date().formatted(date: .numeric, time: .omitted).replacingOccurrences(of: "/", with: "-")).json"
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
             try data.write(to: tempURL)
-            
-            // Present save panel
+
             let panel = NSSavePanel()
             panel.nameFieldStringValue = fileName
             panel.allowedContentTypes = [.json]
             panel.canCreateDirectories = true
-            
+
             if panel.runModal() == .OK, let url = panel.url {
                 try data.write(to: url)
                 exportStatus = .success(url)
@@ -169,9 +189,10 @@ struct DataSettingsView: View {
             exportStatus = .failure("Export failed: \(error.localizedDescription)")
         }
     }
-    
+
     private func resetAllData() {
         for bill in bills { modelContext.delete(bill) }
+        for bill in trashedBills { modelContext.delete(bill) }
         for property in properties { modelContext.delete(property) }
         try? modelContext.save()
         exportStatus = .idle
@@ -184,7 +205,7 @@ struct StatBlock: View {
     let color: Color
     let value: String
     let label: String
-    
+
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: icon)
@@ -206,7 +227,7 @@ struct RentaManExport: Codable {
     let exportedAt: Date
     let properties: [ExportedProperty]
     let bills: [ExportedBill]
-    
+
     init(properties: [Property], bills: [Bill]) {
         self.version = "1.0"
         self.exportedAt = Date()
@@ -224,6 +245,7 @@ struct RentaManExport: Codable {
                 isPaid: $0.isPaid, paymentDate: $0.paymentDate,
                 notes: $0.notes, isRecurring: $0.isRecurring,
                 recurringFrequency: $0.recurringFrequencyRaw,
+                isPaused: $0.isPaused,
                 paymentMethodRaw: $0.paymentMethodRaw,
                 propertyId: $0.property?.id
             )
@@ -252,6 +274,7 @@ struct ExportedBill: Codable {
     let notes: String?
     let isRecurring: Bool
     let recurringFrequency: String
-    let paymentMethodRaw: String      // ← NEW
+    let isPaused: Bool
+    let paymentMethodRaw: String
     let propertyId: String?
 }
