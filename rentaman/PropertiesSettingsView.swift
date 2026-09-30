@@ -88,28 +88,29 @@ struct PropertiesSettingsView: View {
             EditPropertyView(property: property)
                 .environment(\.appCurrency, currency)
         }
-        .alert(
-            "Delete \"\(propertyToDelete?.name ?? "")\"?",
-            isPresented: $isShowingDeleteConfirm,
-            presenting: propertyToDelete
-        ) { property in
-            Button("Delete", role: .destructive) {
-                Task { await SyncService.shared.deleteProperty(property) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { property in
-            Text("This will permanently remove **\(property.name)** and all \(property.bills.filter { !$0.isDeleted }.count) bill(s) associated with it. This action cannot be undone.")
-        }
+       .alert(
+    "Delete \"\(propertyToDelete?.name ?? "")\"?",
+    isPresented: $isShowingDeleteConfirm,
+    presenting: propertyToDelete
+) { property in
+    Button("Delete", role: .destructive) {
+        AuditLog.shared.propertyDeleted(property, context: modelContext)
+        Task { await SyncService.shared.deleteProperty(property) }
     }
-    
-    private func setDefault(_ property: Property) {
-        for prop in properties {
-            prop.isDefault = (prop.id == property.id)
-            prop.syncStatus = .pendingUpload
-            prop.updatedAt = Date()
-        }
-        SyncService.shared.schedulePush()
+    Button("Cancel", role: .cancel) {}
+} message: { property in
+    Text("This will permanently remove **\(property.name)** and all \(property.bills.filter { !$0.isDeleted }.count) bill(s) associated with it. This action cannot be undone.")
+}
     }
+   private func setDefault(_ property: Property) {
+    for prop in properties {
+        prop.isDefault = (prop.id == property.id)
+        prop.syncStatus = .pendingUpload
+        prop.updatedAt = Date()
+    }
+    AuditLog.shared.propertySetDefault(property, context: modelContext)
+    SyncService.shared.schedulePush()
+}
 }
 
 // MARK: - Property Row

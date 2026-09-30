@@ -1,8 +1,6 @@
 import SwiftUI
 import SwiftData
 
-/// Trash bin for soft-deleted bills. Restore or permanently purge.
-/// Auto-purge (30 days) runs on app launch via `LocalMigrations`.
 struct BillTrashView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -51,7 +49,6 @@ struct BillTrashView: View {
         }
     }
 
-    // MARK: - Header
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "trash.fill")
@@ -62,7 +59,7 @@ struct BillTrashView: View {
                     .font(.title2).fontWeight(.bold)
                 Text(deletedBills.isEmpty
                      ? "Nothing here"
-                     : "\(deletedBills.count) bill\(deletedBills.count == 1 ? "" : "s") — auto-purged after 30 days")
+                     : "\(deletedBills.count) bill\(deletedBills.count == 1 ? "" : "s") — restore or permanently delete")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -79,7 +76,6 @@ struct BillTrashView: View {
         .background(Color(NSColor.windowBackgroundColor))
     }
 
-    // MARK: - Table
     private var tableArea: some View {
         Table(sorted, selection: $selection) {
             TableColumn("Title") { bill in
@@ -171,7 +167,6 @@ struct BillTrashView: View {
         }
     }
 
-    // MARK: - Empty
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "trash")
@@ -179,7 +174,7 @@ struct BillTrashView: View {
                 .foregroundStyle(.tertiary)
             Text("Trash is empty")
                 .font(.system(size: 14, weight: .semibold))
-            Text("Deleted bills appear here for 30 days before being permanently removed.")
+            Text("Deleted bills appear here until you restore them or delete them permanently.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -189,7 +184,6 @@ struct BillTrashView: View {
         .padding(40)
     }
 
-    // MARK: - Footer
     private var footer: some View {
         HStack {
             if !deletedBills.isEmpty {
@@ -215,17 +209,22 @@ struct BillTrashView: View {
         bill.deletedAt = nil
         bill.syncStatus = .pendingUpload
         bill.updatedAt = Date()
+
+        AuditLog.shared.billRestored(bill, context: modelContext)
+
         try? modelContext.save()
         SyncService.shared.schedulePush()
     }
 
     private func purge(_ bill: Bill) {
+        AuditLog.shared.billPurged(id: bill.id, title: bill.title, context: modelContext)
         Task { await SyncService.shared.permanentlyDeleteBill(bill) }
     }
 
     private func purgeSelection() {
         let targets = sorted.filter { selection.contains($0.id) }
         for bill in targets {
+            AuditLog.shared.billPurged(id: bill.id, title: bill.title, context: modelContext)
             Task { await SyncService.shared.permanentlyDeleteBill(bill) }
         }
         selection.removeAll()
@@ -233,6 +232,7 @@ struct BillTrashView: View {
 
     private func purgeAll() {
         for bill in deletedBills {
+            AuditLog.shared.billPurged(id: bill.id, title: bill.title, context: modelContext)
             Task { await SyncService.shared.permanentlyDeleteBill(bill) }
         }
     }

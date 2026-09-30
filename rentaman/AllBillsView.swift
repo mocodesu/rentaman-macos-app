@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Cached stats
 private struct BillsStats {
     var total: Double = 0
     var paid: Double = 0
@@ -13,7 +12,6 @@ struct AllBillsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appCurrency) private var currency: AppCurrency
 
-    // Only fetch bills that aren't in the trash
     @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
     private var allBills: [Bill]
     @Query private var properties: [Property]
@@ -27,15 +25,12 @@ struct AllBillsView: View {
     @State private var trendWrapper: TrendWrapper? = nil
     @State private var showGenerateFuture = false
 
-    // Undo state
     @State private var undoState: UndoState? = nil
 
-    // Cached derived data
     @State private var cachedFiltered: [Bill] = []
     @State private var cachedPaged: [Bill] = []
     @State private var cachedStats: BillsStats = .zero
 
-    // Pagination
     @State private var currentPage: Int = 1
     @State private var pageSize: PageSize = .fifty
 
@@ -112,7 +107,7 @@ struct AllBillsView: View {
                         allBills: allBills,
                         selection: $selection,
                         sortOrder: $sortOrder,
-                        onDirty: handleDirty,
+                        onSetPaid: setBillPaid,
                         onDuplicate: duplicateBills,
                         onDelete: deleteBills,
                         onMarkPaid: markBills,
@@ -226,7 +221,7 @@ struct AllBillsView: View {
 
     // MARK: - Cache
     private func recomputeAll() {
-        var result = allBills.filter { !$0.isDeleted }  // belt + braces
+        var result = allBills.filter { !$0.isDeleted }
         if let propId = selectedPropertyId {
             result = result.filter { $0.property?.id == propId }
         }
@@ -264,25 +259,38 @@ struct AllBillsView: View {
         cachedPaged = start < end ? Array(cachedFiltered[start..<end]) : []
     }
 
-    // MARK: - Mutation callbacks
-    private func handleDirty(_ bill: Bill) {
+    // MARK: - Mutations
+    /// Single-bill paid toggle (used by table checkbox and quick button).
+    private func setBillPaid(_ bill: Bill, to isPaid: Bool) {
+        guard bill.isPaid != isPaid else { return }
+        bill.isPaid = isPaid
+        bill.paymentDate = isPaid ? Date() : nil
+        bill.syncStatus = .pendingUpload
+        bill.updatedAt = Date()
+
+        AuditLog.shared.billMarkedPaid(bill, isPaid: isPaid, context: modelContext)
+
         try? modelContext.save()
         SyncService.shared.schedulePush()
         recomputeAll()
     }
 
+    /// Bulk paid toggle from context menu.
     private func markBills(ids: Set<Bill.ID>, asPaid: Bool) {
         for bill in allBills where ids.contains(bill.id) {
+            guard bill.isPaid != asPaid else { continue }
             bill.isPaid = asPaid
             bill.paymentDate = asPaid ? Date() : nil
             bill.syncStatus = .pendingUpload
             bill.updatedAt = Date()
+
+            AuditLog.shared.billMarkedPaid(bill, isPaid: asPaid, context: modelContext)
         }
+        try? modelContext.save()
         SyncService.shared.schedulePush()
         recomputeAll()
     }
 
-    // SOFT DELETE — moves to trash instead of removing
     private func deleteBills(ids: Set<Bill.ID>) {
         let targets = allBills.filter { ids.contains($0.id) }
         guard !targets.isEmpty else { return }
@@ -292,6 +300,8 @@ struct AllBillsView: View {
             bill.deletedAt = now
             bill.syncStatus = .pendingUpload
             bill.updatedAt = now
+
+            AuditLog.shared.billMovedToTrash(bill, context: modelContext)
         }
         try? modelContext.save()
         SyncService.shared.schedulePush()
@@ -306,10 +316,6 @@ struct AllBillsView: View {
         recomputeAll()
     }
 
-    // UNDO — flip isDeleted back off
-    // `#Predicate` can't capture a runtime [String] or translate
-    // `array.contains(_:)` against a keypath, so we fetch and filter
-    // in memory. Trash toggles are tiny — this is instant.
     private func performUndo(_ state: UndoState) {
         let descriptor = FetchDescriptor<Bill>()
         let all = (try? modelContext.fetch(descriptor)) ?? []
@@ -322,6 +328,8 @@ struct AllBillsView: View {
             bill.deletedAt = nil
             bill.syncStatus = .pendingUpload
             bill.updatedAt = now
+
+            AuditLog.shared.billRestored(bill, context: modelContext)
         }
         try? modelContext.save()
         SyncService.shared.schedulePush()
@@ -350,6 +358,8 @@ struct AllBillsView: View {
             copy.syncStatus = .pendingUpload
             copy.updatedAt = Date()
             modelContext.insert(copy)
+
+            AuditLog.shared.billDuplicated(source: bill, copy: copy, context: modelContext)
         }
         try? modelContext.save()
         SyncService.shared.schedulePush()
@@ -437,7 +447,6 @@ private struct UndoToast: View {
         .padding(.horizontal, 24)
         .task(id: state.id) {
             progress = 1.0
-
             let durationSeconds: Double = 6.0
             let totalSteps: Int = 60
             let totalNanos: Double = durationSeconds * 1_000_000_000.0
@@ -447,17 +456,14 @@ private struct UndoToast: View {
             for i in 1...totalSteps {
                 try? await Task.sleep(nanoseconds: stepDelay)
                 if Task.isCancelled { return }
-
                 let fraction: Double = Double(i) / Double(totalSteps)
                 let nextProgress: Double = 1.0 - fraction
-
                 await MainActor.run {
                     withAnimation(.linear(duration: durationSeconds / Double(totalSteps))) {
                         progress = nextProgress
                     }
                 }
             }
-
             if !Task.isCancelled {
                 onDismiss()
             }
@@ -473,7 +479,7 @@ private struct AllBillsTable: View {
     @Binding var selection: Set<Bill.ID>
     @Binding var sortOrder: [KeyPathComparator<Bill>]
 
-    let onDirty: (Bill) -> Void
+    let onSetPaid: (Bill, Bool) -> Void
     let onDuplicate: (Set<Bill.ID>) -> Void
     let onDelete: (Set<Bill.ID>) -> Void
     let onMarkPaid: (Set<Bill.ID>, Bool) -> Void
@@ -485,13 +491,7 @@ private struct AllBillsTable: View {
             TableColumn("Paid") { bill in
                 Toggle("", isOn: Binding(
                     get: { bill.isPaid },
-                    set: { newValue in
-                        bill.isPaid = newValue
-                        bill.paymentDate = newValue ? Date() : nil
-                        bill.syncStatus = .pendingUpload
-                        bill.updatedAt = Date()
-                        onDirty(bill)
-                    }
+                    set: { newValue in onSetPaid(bill, newValue) }
                 ))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
@@ -526,7 +526,6 @@ private struct AllBillsTable: View {
                             .padding(.vertical, 1)
                             .background(Color.orange.gradient)
                             .cornerRadius(3)
-                            .help("Recurring generation is paused")
                     }
 
                     if let limit = BillLimits.shared.limit(for: bill.title),
@@ -611,11 +610,7 @@ private struct AllBillsTable: View {
                 HStack(spacing: 4) {
                     if !bill.isPaid {
                         Button {
-                            bill.isPaid = true
-                            bill.paymentDate = Date()
-                            bill.syncStatus = .pendingUpload
-                            bill.updatedAt = Date()
-                            onDirty(bill)
+                            onSetPaid(bill, true)
                         } label: {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 13)).foregroundStyle(.green)
@@ -740,7 +735,6 @@ struct PaginationBar: View {
                 }
                 .buttonStyle(.bordered).controlSize(.small)
                 .disabled(currentPage <= 1 || pageSize == .all)
-                .help("Previous page")
 
                 HStack(spacing: 4) {
                     Text("Page").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -768,7 +762,6 @@ struct PaginationBar: View {
                 }
                 .buttonStyle(.bordered).controlSize(.small)
                 .disabled(currentPage >= totalPages || pageSize == .all)
-                .help("Next page")
             }
         }
         .padding(.horizontal, 24)

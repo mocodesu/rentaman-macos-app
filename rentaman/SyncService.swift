@@ -277,6 +277,11 @@ final class SyncService {
             isLive = true
             if state != .syncing { state = .live }
         }
+
+        // Remote changes landed — rebuild the notification schedule.
+if let ctx = modelContext {
+    NotificationService.shared.scheduleReschedule(context: ctx)
+}
     }
 
     @MainActor
@@ -331,6 +336,11 @@ final class SyncService {
 
     // MARK: - Manual triggers
     func schedulePush() {
+         // Always trigger a debounced notification reschedule.
+    if let ctx = modelContext {
+        NotificationService.shared.scheduleReschedule(context: ctx)
+    }
+
         guard apiKey != nil, ConvexConfig.isConfigured else {
             state = .localOnly
             return

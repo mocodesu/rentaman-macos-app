@@ -79,6 +79,9 @@ final class AddBillViewModel {
         let amountInKsh = CurrencyFormatter.toKsh(amountInEntryCurrency, from: entryCurrency)
 
         if let existing = editingBill {
+            // Snapshot BEFORE mutation, then diff afterwards for the audit log.
+            let before = BillAuditSnapshot(existing)
+
             existing.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             existing.amount = amountInKsh
             existing.categoryRawValue = selectedCategory.rawValue
@@ -93,6 +96,10 @@ final class AddBillViewModel {
             existing.isPaused = isRecurring ? isPaused : false
             existing.updatedAt = Date()
             existing.syncStatus = .pendingUpload
+
+            // Audit: field-level diff
+            let changes = before.diff(to: existing)
+            AuditLog.shared.billUpdated(existing, changes: changes, context: context)
         } else {
             let newBill = Bill(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -109,6 +116,8 @@ final class AddBillViewModel {
             newBill.paymentMethodRaw = paymentMethod.rawValue
             newBill.notes = notes.isEmpty ? nil : notes
             context.insert(newBill)
+
+            AuditLog.shared.billCreated(newBill, context: context)
         }
 
         SyncService.shared.schedulePush()

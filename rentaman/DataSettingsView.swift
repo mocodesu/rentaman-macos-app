@@ -9,9 +9,11 @@ struct DataSettingsView: View {
     private var bills: [Bill]
     @Query(filter: #Predicate<Bill> { $0.isDeleted == true })
     private var trashedBills: [Bill]
+    @Query private var auditEntries: [AuditEntry]
 
     @State private var isShowingResetConfirm = false
     @State private var isShowingTrash = false
+    @State private var isShowingAuditLog = false
     @State private var exportStatus: ExportStatus = .idle
 
     enum ExportStatus {
@@ -46,7 +48,7 @@ struct DataSettingsView: View {
 
                 SettingsSection(
                     title: "Trash",
-                    subtitle: "Deleted bills are kept here for 30 days before being permanently removed."
+                    subtitle: "Deleted bills are kept here until you restore or permanently delete them."
                 ) {
                     SettingsRow(
                         icon: "trash.fill",
@@ -54,7 +56,7 @@ struct DataSettingsView: View {
                         title: "Trash",
                         subtitle: trashedBills.isEmpty
                             ? "Empty"
-                            : "\(trashedBills.count) bill\(trashedBills.count == 1 ? "" : "s") waiting — auto-purge in \(daysUntilEarliestPurge) day\(daysUntilEarliestPurge == 1 ? "" : "s")"
+                            : "\(trashedBills.count) bill\(trashedBills.count == 1 ? "" : "s") waiting"
                     ) {
                         Button {
                             isShowingTrash = true
@@ -63,6 +65,29 @@ struct DataSettingsView: View {
                         }
                         .buttonStyle(.bordered)
                         .disabled(trashedBills.isEmpty)
+                    }
+                }
+
+                // 🆕 Audit Log
+                SettingsSection(
+                    title: "Audit Log",
+                    subtitle: "A complete, timestamped history of every change you've made."
+                ) {
+                    SettingsRow(
+                        icon: "clock.arrow.circlepath",
+                        iconColor: .blue,
+                        title: "Activity history",
+                        subtitle: auditEntries.isEmpty
+                            ? "No activity yet"
+                            : "\(auditEntries.count) entr\(auditEntries.count == 1 ? "y" : "ies") logged"
+                    ) {
+                        Button {
+                            isShowingAuditLog = true
+                        } label: {
+                            Label("View Log", systemImage: "list.bullet.rectangle")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(auditEntries.isEmpty)
                     }
                 }
 
@@ -146,19 +171,15 @@ struct DataSettingsView: View {
             BillTrashView()
                 .environment(\.appCurrency, .ksh)
         }
+        .sheet(isPresented: $isShowingAuditLog) {
+            AuditLogView()
+        }
         .alert("Reset all local data?", isPresented: $isShowingResetConfirm) {
             Button("Reset", role: .destructive) { resetAllData() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently remove **\(properties.count) propert\(properties.count == 1 ? "y" : "ies")** and **\(bills.count) bill\(bills.count == 1 ? "" : "s")** from this Mac. Data synced to the cloud will remain and can be re-downloaded on next launch.")
         }
-    }
-
-    private var daysUntilEarliestPurge: Int {
-        guard let earliest = trashedBills.compactMap({ $0.deletedAt }).min() else { return 30 }
-        let expiry = Calendar.current.date(byAdding: .day, value: 30, to: earliest) ?? Date()
-        let days = Calendar.current.dateComponents([.day], from: Date(), to: expiry).day ?? 0
-        return max(0, days)
     }
 
     private func exportData() {
@@ -194,12 +215,13 @@ struct DataSettingsView: View {
         for bill in bills { modelContext.delete(bill) }
         for bill in trashedBills { modelContext.delete(bill) }
         for property in properties { modelContext.delete(property) }
+        for entry in auditEntries { modelContext.delete(entry) }
         try? modelContext.save()
         exportStatus = .idle
     }
 }
 
-// MARK: - Stat Block
+// MARK: - Stat Block (unchanged)
 struct StatBlock: View {
     let icon: String
     let color: Color
@@ -221,7 +243,7 @@ struct StatBlock: View {
     }
 }
 
-// MARK: - Export Model
+// MARK: - Export Model (unchanged)
 struct RentaManExport: Codable {
     let version: String
     let exportedAt: Date

@@ -5,6 +5,8 @@ import Charts
 struct DashboardView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
     @Environment(SyncService.self) private var syncService
+    @Environment(\.modelContext) private var modelContext
+    
     @Query private var properties: [Property]
     @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
 private var allBills: [Bill]
@@ -338,14 +340,18 @@ private var allBills: [Bill]
         return "Unusual spending patterns"
     }
 
-    // MARK: - Actions
-    private func markBillAsPaid(_ bill: Bill) {
-        bill.isPaid = true
-        bill.paymentDate = Date()
-        bill.syncStatus = .pendingUpload
-        bill.updatedAt = Date()
-        SyncService.shared.schedulePush()
-    }
+   private func markBillAsPaid(_ bill: Bill) {
+    guard !bill.isPaid else { return }
+    bill.isPaid = true
+    bill.paymentDate = Date()
+    bill.syncStatus = .pendingUpload
+    bill.updatedAt = Date()
+
+    AuditLog.shared.billMarkedPaid(bill, isPaid: true, context: modelContext)
+
+    try? modelContext.save()
+    SyncService.shared.schedulePush()
+}
 
     // MARK: - Property Filter
     private var propertyFilter: some View {

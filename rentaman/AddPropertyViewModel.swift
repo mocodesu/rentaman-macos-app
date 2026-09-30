@@ -9,14 +9,14 @@ final class AddPropertyViewModel {
     var monthlyBudgetString: String = ""
     var colorHex: String = "#007AFF"
     var isDefault: Bool = false
-    
+
     var isValid: Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return false }
         guard let budget = Double(monthlyBudgetString), budget >= 0 else { return false }
         return true
     }
-    
+
     var validationErrorMessage: String? {
         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "Please enter a property name."
@@ -26,11 +26,10 @@ final class AddPropertyViewModel {
         }
         return nil
     }
-    
+
     func save(context: ModelContext, allProperties: [Property]) -> Bool {
         guard isValid, let budget = Double(monthlyBudgetString) else { return false }
-        
-        // If this property is default, unset all others
+
         if isDefault {
             for prop in allProperties {
                 prop.isDefault = false
@@ -38,9 +37,9 @@ final class AddPropertyViewModel {
                 prop.updatedAt = Date()
             }
         }
-        
+
         let forceDefault = allProperties.isEmpty || isDefault
-        
+
         let newProperty = Property(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             address: address.isEmpty ? nil : address,
@@ -48,15 +47,18 @@ final class AddPropertyViewModel {
             monthlyBudget: budget,
             isDefault: forceDefault
         )
-        
+
         context.insert(newProperty)
-        
-        // 🔥 Trigger sync
+
+        AuditLog.shared.propertyCreated(newProperty, context: context)
+        if forceDefault {
+            AuditLog.shared.propertySetDefault(newProperty, context: context)
+        }
+
         SyncService.shared.schedulePush()
-        
         return true
     }
-    
+
     func reset() {
         name = ""
         address = ""
