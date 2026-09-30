@@ -21,7 +21,7 @@ export default defineSchema({
     isDefault: v.boolean(),
     updatedAt: v.number(),
     deleted: v.boolean(),
-    ownerId: v.optional(v.string()), // ⬅️ will hold the user's Convex _id
+    ownerId: v.optional(v.string()),
   })
     .index("by_externalId", ["externalId"])
     .index("by_owner", ["ownerId"]),
@@ -38,6 +38,7 @@ export default defineSchema({
     receiptIdentifier: v.optional(v.string()),
     isRecurring: v.boolean(),
     recurringFrequencyRaw: v.string(),
+    paymentMethodRaw: v.optional(v.string()), // ← Payment method tracking
     propertyExternalId: v.string(),
     updatedAt: v.number(),
     deleted: v.boolean(),

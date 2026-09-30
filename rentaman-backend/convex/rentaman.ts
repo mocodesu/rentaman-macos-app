@@ -15,7 +15,7 @@ async function requireUser(ctx: QueryCtx, apiKey: string): Promise<string> {
 }
 
 // ──────────────────────────────────────────────────────────────
-//  PROPERTIES — single upsert (kept for compatibility)
+//  PROPERTIES — single upsert
 // ──────────────────────────────────────────────────────────────
 export const upsertProperty = mutation({
   args: {
@@ -63,7 +63,7 @@ export const upsertProperty = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  PROPERTIES — single delete (kept for compatibility)
+//  PROPERTIES — single delete
 // ──────────────────────────────────────────────────────────────
 export const deleteProperty = mutation({
   args: { apiKey: v.string(), externalId: v.string(), updatedAt: v.number() },
@@ -85,7 +85,7 @@ export const deleteProperty = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  PROPERTIES — batch upsert (JSON payload)
+//  PROPERTIES — batch upsert
 // ──────────────────────────────────────────────────────────────
 export const batchUpsertProperties = mutation({
   args: {
@@ -156,7 +156,7 @@ export const batchUpsertProperties = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  PROPERTIES — batch delete (JSON payload)
+//  PROPERTIES — batch delete
 // ──────────────────────────────────────────────────────────────
 export const batchDeleteProperties = mutation({
   args: {
@@ -200,7 +200,7 @@ export const batchDeleteProperties = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — batch upsert (JSON payload)
+//  BILLS — batch upsert
 // ──────────────────────────────────────────────────────────────
 export const batchUpsertBills = mutation({
   args: {
@@ -222,6 +222,7 @@ export const batchUpsertBills = mutation({
       receiptIdentifier?: string;
       isRecurring: boolean;
       recurringFrequencyRaw: string;
+      paymentMethodRaw?: string;
       propertyExternalId: string;
       updatedAt: number;
     };
@@ -260,6 +261,7 @@ export const batchUpsertBills = mutation({
         receiptIdentifier: item.receiptIdentifier,
         isRecurring: item.isRecurring,
         recurringFrequencyRaw: item.recurringFrequencyRaw,
+        paymentMethodRaw: item.paymentMethodRaw,
         propertyExternalId: item.propertyExternalId,
         updatedAt: item.updatedAt,
         deleted: false,
@@ -283,7 +285,7 @@ export const batchUpsertBills = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — batch delete (JSON payload)
+//  BILLS — batch delete
 // ──────────────────────────────────────────────────────────────
 export const batchDeleteBills = mutation({
   args: {
@@ -344,7 +346,7 @@ export const listProperties = query({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — single upsert (kept for compatibility)
+//  BILLS — single upsert
 // ──────────────────────────────────────────────────────────────
 export const upsertBill = mutation({
   args: {
@@ -360,6 +362,7 @@ export const upsertBill = mutation({
     receiptIdentifier: v.optional(v.string()),
     isRecurring: v.boolean(),
     recurringFrequencyRaw: v.string(),
+    paymentMethodRaw: v.optional(v.string()),
     propertyExternalId: v.string(),
     updatedAt: v.number(),
   },
@@ -389,7 +392,7 @@ export const upsertBill = mutation({
 });
 
 // ──────────────────────────────────────────────────────────────
-//  BILLS — single delete (kept for compatibility)
+//  BILLS — single delete
 // ──────────────────────────────────────────────────────────────
 export const deleteBill = mutation({
   args: { apiKey: v.string(), externalId: v.string(), updatedAt: v.number() },
@@ -451,10 +454,115 @@ export const getPropertyByExternalId = query({
   },
 });
 
-//  ONE-TIME MIGRATION
-//  Repoints every bill in your account to the correct property.
-//  Safe to run multiple times — idempotent.
-//  Delete this function after the migration succeeds.
+// ──────────────────────────────────────────────────────────────
+//  🆕 MIGRATION — Paid bills → "Cash"
+//
+//  For every bill belonging to the caller:
+//    • If isPaid AND paymentMethodRaw is missing → set to "Cash"
+//    • If isPaid AND paymentMethodRaw === "Other" → set to "Cash"
+//    • If isPaid AND paymentMethodRaw is an explicit method (M-Pesa,
+//      Bank, Card, Cheque, Airtel Money, Cash) → leave untouched
+//    • If NOT paid AND paymentMethodRaw is missing → fill with "Other"
+//      (harmless placeholder; user will set it when they mark it paid)
+//
+//  Idempotent. Safe to run multiple times. Delete after use.
+//
+//  Run via dashboard or script:
+//    rentaman:migrationPaidBillsToCash  { "apiKey": "..." }
+// ──────────────────────────────────────────────────────────────
+export const migrationPaidBillsToCash = mutation({
+  args: { apiKey: v.string() },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+
+    const allBills = await ctx.db
+      .query("bills")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .collect();
+
+    const now = Date.now();
+    let convertedToCash = 0;
+    let alreadyCash = 0;
+    let keptExplicitMethod = 0;
+    let unpaidFilledWithOther = 0;
+
+    for (const bill of allBills) {
+      const current = bill.paymentMethodRaw;
+
+      if (bill.isPaid) {
+        if (current === undefined || current === null || current === "Other") {
+          await ctx.db.patch(bill._id, {
+            paymentMethodRaw: "Cash",
+            updatedAt: now,
+          });
+          convertedToCash++;
+        } else if (current === "Cash") {
+          alreadyCash++;
+        } else {
+          // Explicit method chosen by the user (M-Pesa, Bank, etc.) — respect it.
+          keptExplicitMethod++;
+        }
+      } else {
+        // Unpaid: just ensure field is never missing so old docs stay consistent.
+        if (current === undefined || current === null) {
+          await ctx.db.patch(bill._id, {
+            paymentMethodRaw: "Other",
+            updatedAt: now,
+          });
+          unpaidFilledWithOther++;
+        }
+      }
+    }
+
+    return {
+      totalBills: allBills.length,
+      convertedToCash,
+      alreadyCash,
+      keptExplicitMethod,
+      unpaidFilledWithOther,
+    };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  DIAGNOSTIC — verify what's on the server
+// ──────────────────────────────────────────────────────────────
+export const diagnosticsPaymentMethods = query({
+  args: { apiKey: v.string() },
+  handler: async (ctx, args) => {
+    const ownerId = await requireUser(ctx, args.apiKey);
+
+    const allBills = await ctx.db
+      .query("bills")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .collect();
+
+    const counts: Record<string, number> = {};
+    let paidMissing = 0;
+    let unpaidMissing = 0;
+
+    for (const bill of allBills) {
+      const current = bill.paymentMethodRaw;
+      if (current === undefined || current === null) {
+        if (bill.isPaid) paidMissing++;
+        else unpaidMissing++;
+      } else {
+        const key = bill.isPaid ? `paid:${current}` : `unpaid:${current}`;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+
+    return {
+      totalBills: allBills.length,
+      paidMissingPaymentMethod: paidMissing,
+      unpaidMissingPaymentMethod: unpaidMissing,
+      countsByPaidState: counts,
+    };
+  },
+});
+
+// ──────────────────────────────────────────────────────────────
+//  ONE-TIME MIGRATION — Fix property references
 // ──────────────────────────────────────────────────────────────
 export const migrationFixPropertyRefs = mutation({
   args: {
@@ -464,7 +572,6 @@ export const migrationFixPropertyRefs = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireUser(ctx, args.apiKey);
 
-    // 1. Confirm the target property exists and belongs to this user.
     const target = await ctx.db
       .query("properties")
       .withIndex("by_externalId", (q) =>
@@ -481,7 +588,6 @@ export const migrationFixPropertyRefs = mutation({
       throw new Error("Target property belongs to a different owner");
     }
 
-    // 2. Repoint every bill belonging to this user.
     const allBills = await ctx.db
       .query("bills")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))

@@ -12,31 +12,39 @@ final class Bill {
     var paymentDate: Date?
     var notes: String?
     var receiptIdentifier: String?
-    
+
     // NEW: Recurring metadata
     var isRecurring: Bool = false
     var recurringFrequencyRaw: String = RecurringFrequency.none.rawValue
-    
+
+    // NEW: Payment method (stored raw string; default "Other")
+    var paymentMethodRaw: String = PaymentMethod.other.rawValue
+
     var syncStatusRaw: String
     var updatedAt: Date
-    
+
     var property: Property?
-    
+
     var category: ExpenseCategory {
         get { ExpenseCategory(rawValue: categoryRawValue) ?? .miscellaneous }
         set { categoryRawValue = newValue.rawValue }
     }
-    
+
     var recurringFrequency: RecurringFrequency {
         get { RecurringFrequency(rawValue: recurringFrequencyRaw) ?? .none }
         set { recurringFrequencyRaw = newValue.rawValue }
     }
-    
+
+    var paymentMethod: PaymentMethod {
+        get { PaymentMethod(rawValue: paymentMethodRaw) ?? .other }
+        set { paymentMethodRaw = newValue.rawValue }
+    }
+
     var syncStatus: SyncStatus {
         get { SyncStatus(rawValue: syncStatusRaw) ?? .pendingUpload }
         set { syncStatusRaw = newValue.rawValue }
     }
-    
+
     init(
         id: String = UUID().uuidString,
         title: String,
@@ -57,9 +65,10 @@ final class Bill {
         self.property = property
         self.isRecurring = isRecurring
         self.recurringFrequencyRaw = recurringFrequency.rawValue
+        self.paymentMethodRaw = PaymentMethod.other.rawValue
         self.updatedAt = Date()
         self.syncStatusRaw = SyncStatus.pendingUpload.rawValue
-        
+
         if isPaid {
             self.paymentDate = Date()
         }

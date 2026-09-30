@@ -289,10 +289,6 @@ final class SyncService {
         }
     }
 
-    /// Handles bills whose `propertyExternalId` didn't resolve locally.
-    /// 1. Tries again against local store (in case props just landed).
-    /// 2. Falls back to a one-shot server fetch per unique property ID.
-    /// 3. Anything still missing goes back into the orphan queue.
     @MainActor
     private func retryOrphanBills(context: ModelContext) async {
         guard !orphanBills.isEmpty else { return }
@@ -300,18 +296,15 @@ final class SyncService {
         let pending = orphanBills
         orphanBills.removeAll()
 
-        // Group by property id so we don't fetch the same property N times.
         let grouped = Dictionary(grouping: pending, by: { $0.propertyExternalId })
 
         var resolved: [String: Property] = [:]
 
         for (propId, _) in grouped {
-            // 1. Local hit?
             if let local = findProperty(id: propId, context: context) {
                 resolved[propId] = local
                 continue
             }
-            // 2. Server fetch on demand.
             if let remote = await fetchPropertyFromServer(id: propId) {
                 let newLocal = upsertLocalProperty(remote, context: context)
                 resolved[propId] = newLocal
@@ -319,15 +312,12 @@ final class SyncService {
                 print("✅ [Sync] On-demand fetched property \(propId) from server")
                 continue
             }
-            // 3. Still missing — log for diagnostics.
             let localIds = (try? context.fetch(FetchDescriptor<Property>()))?.map { $0.id } ?? []
             print("❌ [Sync] Property \(propId) not found locally (\(localIds.count) local props: \(localIds)) nor on server")
         }
 
-        // Retry the bills with whatever properties we managed to resolve.
         for (propId, bills) in grouped {
             guard resolved[propId] != nil else {
-                // Re-queue for next cycle.
                 for bill in bills { orphanBills.append(bill) }
                 continue
             }
@@ -337,7 +327,6 @@ final class SyncService {
         }
     }
 
-    /// One-shot fetch of a single property from Convex by external ID.
     private func fetchPropertyFromServer(id: String) async -> RemoteProperty? {
         guard let client = client, let apiKey = apiKey else { return nil }
         let args: [String: ConvexEncodable?] = [
@@ -421,7 +410,6 @@ final class SyncService {
 
         var failures: [String] = []
 
-        // 1. Properties — one mutation.
         if !propsToPush.isEmpty {
             do {
                 try await batchUpsertProperties(propsToPush, client: client, apiKey: apiKey)
@@ -434,7 +422,6 @@ final class SyncService {
             }
         }
 
-        // 2. Bills — one mutation, only for bills whose property is synced.
         if !billsToPush.isEmpty {
             let ready = billsToPush.filter { bill in
                 guard let prop = bill.property else { return false }
@@ -462,7 +449,6 @@ final class SyncService {
             }
         }
 
-        // 3. Delete bills — one mutation.
         if !billDeletes.isEmpty {
             do {
                 try await batchDeleteBills(billDeletes, client: client, apiKey: apiKey)
@@ -474,7 +460,6 @@ final class SyncService {
             }
         }
 
-        // 4. Delete properties — one mutation.
         if !propDeletes.isEmpty {
             do {
                 try await batchDeleteProperties(propDeletes, client: client, apiKey: apiKey)
@@ -549,6 +534,7 @@ final class SyncService {
                 "isPaid": bill.isPaid,
                 "isRecurring": bill.isRecurring,
                 "recurringFrequencyRaw": bill.recurringFrequencyRaw,
+                "paymentMethodRaw": bill.paymentMethodRaw,
                 "propertyExternalId": propertyId,
                 "updatedAt": bill.updatedAt.timeIntervalSince1970 * 1000,
             ]
@@ -658,6 +644,7 @@ final class SyncService {
         let remoteId = remote.externalId
         let remotePropertyId = remote.propertyExternalId
         let remoteDate = Date(timeIntervalSince1970: remote.updatedAt / 1000)
+        let resolvedMethod = Self.resolvedPaymentMethod(from: remote)
 
         let descriptor = FetchDescriptor<Bill>(predicate: #Predicate { $0.id == remoteId })
         let existing = try? context.fetch(descriptor).first
@@ -682,6 +669,7 @@ final class SyncService {
             existing.dueDate = Date(timeIntervalSince1970: remote.dueDate / 1000)
             existing.isPaid = remote.isPaid
             existing.paymentDate = remote.paymentDate.map { Date(timeIntervalSince1970: $0 / 1000) }
+            existing.paymentMethodRaw = resolvedMethod
             existing.notes = remote.notes
             existing.isRecurring = remote.isRecurring
             existing.recurringFrequencyRaw = remote.recurringFrequencyRaw
@@ -706,10 +694,29 @@ final class SyncService {
             )
             newBill.notes = remote.notes
             newBill.paymentDate = remote.paymentDate.map { Date(timeIntervalSince1970: $0 / 1000) }
+            newBill.paymentMethodRaw = resolvedMethod
             newBill.updatedAt = remoteDate
             newBill.syncStatus = .synced
             context.insert(newBill)
         }
+    }
+
+    /// Picks the payment method to store locally when ingesting a remote bill.
+    ///
+    /// - If the server sent a method, use it verbatim.
+    /// - If the server sent nothing:
+    ///     • Paid bills default to `.cash`
+    ///     • Unpaid bills default to `.other`
+    ///
+    /// This auto-heals legacy rows that predate the payment-method feature
+    /// and matches the "existing paid bills should be Cash" policy.
+    private static func resolvedPaymentMethod(from remote: RemoteBill) -> String {
+        if let raw = remote.paymentMethodRaw, !raw.isEmpty {
+            return raw
+        }
+        return remote.isPaid
+            ? PaymentMethod.cash.rawValue
+            : PaymentMethod.other.rawValue
     }
 
     private func findProperty(id: String, context: ModelContext) -> Property? {
@@ -784,6 +791,7 @@ struct RemoteBill: Decodable, Hashable {
     let receiptIdentifier: String?
     let isRecurring: Bool
     let recurringFrequencyRaw: String
+    let paymentMethodRaw: String?
     let propertyExternalId: String
     let updatedAt: Double
 }

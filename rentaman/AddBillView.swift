@@ -146,6 +146,18 @@ struct AddBillView: View {
                                 .frame(width: 20)
                             DatePicker("Payment Date", selection: $viewModel.paymentDate, displayedComponents: .date)
                         }
+                        
+                        HStack {
+                            Image(systemName: viewModel.paymentMethod.iconName)
+                                .foregroundStyle(viewModel.paymentMethod.color)
+                                .frame(width: 20)
+                            Picker("Payment Method", selection: $viewModel.paymentMethod) {
+                                ForEach(PaymentMethod.allCases) { method in
+                                    Label(method.displayName, systemImage: method.iconName)
+                                        .tag(method)
+                                }
+                            }
+                        }
                     }
                 } header: {
                     Label("Payment Status", systemImage: "calendar.badge.clock")

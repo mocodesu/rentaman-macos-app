@@ -276,6 +276,7 @@ struct AllBillsView: View {
             )
             copy.notes = bill.notes
             copy.receiptIdentifier = nil
+            copy.paymentMethodRaw = bill.paymentMethodRaw
             copy.syncStatus = .pendingUpload
             copy.updatedAt = Date()
             modelContext.insert(copy)
@@ -389,6 +390,26 @@ private struct AllBillsTable: View {
                     .monospacedDigit()
             }
             .width(min: 110, ideal: 140)
+
+            // 🆕 Paid Via column
+            TableColumn("Paid Via") { bill in
+                if bill.isPaid {
+                    HStack(spacing: 5) {
+                        Image(systemName: bill.paymentMethod.iconName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(bill.paymentMethod.color)
+                        Text(bill.paymentMethod.displayName)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("—")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .width(min: 100, ideal: 120)
 
             TableColumn("Due Date", value: \.dueDate) { bill in
                 HStack(spacing: 6) {

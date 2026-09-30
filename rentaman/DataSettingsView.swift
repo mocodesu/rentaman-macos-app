@@ -224,6 +224,7 @@ struct RentaManExport: Codable {
                 isPaid: $0.isPaid, paymentDate: $0.paymentDate,
                 notes: $0.notes, isRecurring: $0.isRecurring,
                 recurringFrequency: $0.recurringFrequencyRaw,
+                paymentMethodRaw: $0.paymentMethodRaw,
                 propertyId: $0.property?.id
             )
         }
@@ -251,5 +252,6 @@ struct ExportedBill: Codable {
     let notes: String?
     let isRecurring: Bool
     let recurringFrequency: String
+    let paymentMethodRaw: String      // ← NEW
     let propertyId: String?
 }
