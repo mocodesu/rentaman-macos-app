@@ -23,27 +23,27 @@ struct EditPropertyView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 10) {
                 Image(systemName: "square.and.pencil")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(RMDesign.accent)
                 Text("Edit Property")
-                    .font(.title2)
-                    .fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Button {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
+                        .font(.system(size: 16))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
             }
-            .padding(20)
+            .padding(16)
+            .background(RMDesign.pageBackground)
 
-            Divider()
+            Divider().opacity(0.5)
 
             Form {
                 Section {
@@ -85,13 +85,13 @@ struct EditPropertyView: View {
                             HStack(spacing: 10) {
                                 ForEach(colorOptions, id: \.self) { hex in
                                     Button {
-                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                        withAnimation(RMDesign.ease) {
                                             colorHex = hex
                                         }
                                     } label: {
                                         Circle()
                                             .fill(Color(hex: hex))
-                                            .frame(width: 24, height: 24)
+                                            .frame(width: 22, height: 22)
                                             .overlay(
                                                 Circle()
                                                     .stroke(Color.white, lineWidth: 2)
@@ -104,7 +104,7 @@ struct EditPropertyView: View {
                                                     .scaleEffect(colorHex == hex ? 1.35 : 1.0)
                                                     .opacity(colorHex == hex ? 1 : 0)
                                             )
-                                            .scaleEffect(colorHex == hex ? 1.1 : 1.0)
+                                            .scaleEffect(colorHex == hex ? 1.08 : 1.0)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -115,7 +115,7 @@ struct EditPropertyView: View {
             }
             .formStyle(.grouped)
 
-            Divider()
+            Divider().opacity(0.5)
 
             HStack {
                 Spacer()
@@ -132,7 +132,8 @@ struct EditPropertyView: View {
                 .disabled(!isValid)
                 .keyboardShortcut(.defaultAction)
             }
-            .padding(20)
+            .padding(16)
+            .background(RMDesign.pageBackground)
         }
         .frame(width: 520, height: 500)
         .onAppear {

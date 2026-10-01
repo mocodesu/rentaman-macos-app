@@ -5,7 +5,7 @@ import AppKit
 struct WindowDragHandle: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { DraggableView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
-    
+
     private final class DraggableView: NSView {
         override var mouseDownCanMoveWindow: Bool { true }
     }
@@ -14,32 +14,29 @@ struct WindowDragHandle: NSViewRepresentable {
 // MARK: - Toolbar Leading (Logo + Name + Email)
 struct RentaManToolbarLeading: View {
     @Environment(AuthService.self) private var auth
-    
+
     private var subtitle: String {
         if case .signedIn(let email, _) = auth.state {
             return email
         }
         return "Not signed in"
     }
-    
+
     var body: some View {
-        HStack(spacing: 9) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(RMDesign.accentGradient)
-                    .frame(width: 24, height: 24)
-                    .shadow(color: Color.blue.opacity(0.25), radius: 3, y: 1)
-                Image(systemName: "house.lodge.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            
+        HStack(spacing: 8) {
+            Image(systemName: "house.lodge.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(RMDesign.accent)
+                .frame(width: 20, height: 20)
+                .background(RMDesign.accentSoft)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+
             VStack(alignment: .leading, spacing: 0) {
                 Text("RentaMan")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                
+
                 Text(subtitle)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -58,7 +55,7 @@ struct RentaManSyncPill: View {
     @Environment(SyncService.self) private var syncService
     @Environment(AuthService.self) private var auth
     @State private var isHovered = false
-    
+
     var body: some View {
         Menu {
             Section {
@@ -75,9 +72,9 @@ struct RentaManSyncPill: View {
                     Label("Running in Local Only mode", systemImage: "internaldrive")
                 }
             }
-            
+
             Divider()
-            
+
             Button {
                 Task { await syncService.forceSync() }
             } label: {
@@ -87,24 +84,24 @@ struct RentaManSyncPill: View {
         } label: {
             HStack(spacing: 5) {
                 statusIndicator
-                
+
                 Text(statusLabel)
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(labelColor)
-                
+
                 if syncService.pendingCount > 0 {
                     Text("\(syncService.pendingCount)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(minWidth: 13)
+                        .frame(minWidth: 12)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background(Color.orange)
+                        .background(RMDesign.warning)
                         .clipShape(Capsule())
                 }
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4.5)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(pillBackground)
             .overlay(Capsule().stroke(pillBorder, lineWidth: 0.75))
             .clipShape(Capsule())
@@ -114,11 +111,11 @@ struct RentaManSyncPill: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovered = hovering }
+            withAnimation(RMDesign.ease) { isHovered = hovering }
         }
         .help(syncService.lastError ?? syncService.state.label)
     }
-    
+
     @ViewBuilder
     private var statusIndicator: some View {
         switch syncService.state {
@@ -128,7 +125,7 @@ struct RentaManSyncPill: View {
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.red)
+                .foregroundStyle(RMDesign.danger)
         case .localOnly:
             Image(systemName: "internaldrive.fill")
                 .font(.system(size: 9, weight: .medium))
@@ -136,10 +133,10 @@ struct RentaManSyncPill: View {
         case .idle:
             Image(systemName: "checkmark.icloud.fill")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(RMDesign.success)
         }
     }
-    
+
     private var statusLabel: String {
         switch syncService.state {
         case .live: return "Live"
@@ -149,27 +146,26 @@ struct RentaManSyncPill: View {
         case .idle: return "Synced"
         }
     }
-    
+
     private var labelColor: Color {
         switch syncService.state {
-        case .error: return .red
-        case .live, .idle: return .green
+        case .error: return RMDesign.danger
+        case .live, .idle: return .primary
         default: return .primary
         }
     }
-    
+
     private var pillBackground: Color {
-        isHovered ? Color.gray.opacity(0.16) : Color.gray.opacity(0.08)
+        isHovered ? Color.gray.opacity(0.14) : Color.gray.opacity(0.06)
     }
-    
+
     private var pillBorder: Color {
         switch syncService.state {
-        case .error: return Color.red.opacity(0.3)
-        case .live, .idle: return Color.green.opacity(0.25)
-        default: return Color.gray.opacity(0.12)
+        case .error: return RMDesign.danger.opacity(0.4)
+        default: return RMDesign.borderColor
         }
     }
-    
+
     private func relativeTime(_ date: Date) -> String {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
@@ -180,7 +176,7 @@ struct RentaManSyncPill: View {
 // MARK: - Compact Live Dot
 struct CompactLiveDot: View {
     @State private var pulse = false
-    
+
     var body: some View {
         ZStack {
             Circle()
@@ -190,8 +186,7 @@ struct CompactLiveDot: View {
                 .opacity(pulse ? 0 : 1)
             Circle()
                 .fill(Color.green)
-                .frame(width: 6, height: 6)
-                .shadow(color: Color.green.opacity(0.6), radius: 2)
+                .frame(width: 5, height: 5)
         }
         .frame(width: 8, height: 8)
         .onAppear {
@@ -229,21 +224,21 @@ struct LiveIndicator: View {
 struct RentaManCurrencyPicker: View {
     @AppStorage(PreferenceKey.displayCurrency) private var currencyRaw: String = AppCurrency.ksh.rawValue
     @Namespace private var namespace
-    
+
     private var currency: AppCurrency {
         AppCurrency(rawValue: currencyRaw) ?? .ksh
     }
-    
+
     var body: some View {
         HStack(spacing: 1) {
             ForEach(AppCurrency.allCases) { curr in
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(RMDesign.springFast) {
                         currencyRaw = curr.rawValue
                     }
                 } label: {
                     Text(curr.rawValue)
-                        .font(.system(size: 9.5, weight: .bold))
+                        .font(.system(size: 9.5, weight: .semibold))
                         .tracking(0.3)
                         .foregroundStyle(currency == curr ? .white : .secondary)
                         .padding(.horizontal, 7)
@@ -251,7 +246,7 @@ struct RentaManCurrencyPicker: View {
                         .background {
                             if currency == curr {
                                 Capsule()
-                                    .fill(Color.blue.gradient)
+                                    .fill(RMDesign.accent)
                                     .matchedGeometryEffect(id: "currencyPill", in: namespace)
                             }
                         }
@@ -263,7 +258,7 @@ struct RentaManCurrencyPicker: View {
         }
         .padding(1.5)
         .background(Color.gray.opacity(0.08))
-        .overlay(Capsule().stroke(Color.gray.opacity(0.12), lineWidth: 0.75))
+        .overlay(Capsule().stroke(RMDesign.borderColor, lineWidth: 0.75))
         .clipShape(Capsule())
         .fixedSize()
     }
@@ -272,7 +267,7 @@ struct RentaManCurrencyPicker: View {
 // MARK: - Add Bill Button (Native Primary Action)
 struct RentaManAddBillButton: View {
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Label("Add Bill", systemImage: "plus")

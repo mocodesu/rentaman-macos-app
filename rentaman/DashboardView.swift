@@ -6,10 +6,10 @@ struct DashboardView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
     @Environment(SyncService.self) private var syncService
     @Environment(\.modelContext) private var modelContext
-    
+
     @Query private var properties: [Property]
     @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
+    private var allBills: [Bill]
 
     @State private var selectedPropertyId: String? = nil
     @State private var lastRefreshCheck: Date = Date()
@@ -33,13 +33,13 @@ private var allBills: [Bill]
     }
 
     private let kpiColumns: [GridItem] = Array(
-        repeating: GridItem(.flexible(), spacing: 14),
+        repeating: GridItem(.flexible(), spacing: 12),
         count: 4
     )
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 // MARK: - Page Header + Live Freshness
                 HStack(alignment: .center) {
                     RMPageHeader(
@@ -57,18 +57,17 @@ private var allBills: [Bill]
                 .padding(.horizontal, 24)
 
                 // MARK: - Hero KPIs
-                LazyVGrid(columns: kpiColumns, spacing: 14) {
+                LazyVGrid(columns: kpiColumns, spacing: 12) {
                     HeroKPICard(
                         title: "Unpaid Bills",
                         value: "\(analytics.unpaidBills.count)",
                         subtitle: CurrencyFormatter.format(analytics.totalUnpaidAmount, as: currency),
                         icon: "exclamationmark.triangle.fill",
                         gradient: LinearGradient(
-                            colors: [Color(red: 0.95, green: 0.35, blue: 0.35),
-                                     Color(red: 0.85, green: 0.15, blue: 0.35)],
+                            colors: [.red, .red],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ),
-                        iconAccent: .red
+                        iconAccent: RMDesign.danger
                     )
 
                     HeroKPICard(
@@ -77,24 +76,22 @@ private var allBills: [Bill]
                         subtitle: upcomingSubtitle,
                         icon: "clock.fill",
                         gradient: LinearGradient(
-                            colors: [Color(red: 0.98, green: 0.62, blue: 0.15),
-                                     Color(red: 0.92, green: 0.42, blue: 0.08)],
+                            colors: [.orange, .orange],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ),
-                        iconAccent: .orange
+                        iconAccent: RMDesign.warning
                     )
 
                     HeroKPICard(
                         title: "Spent This Month",
-                        value: CurrencyFormatter.format(analytics.totalSpentThisMonth, as: currency),
-                        subtitle: analytics.spentThisMonthLabel,
+                        value: CurrencyFormatter.format(analytics.totalPaidThisMonth, as: currency),
+                        subtitle: analytics.spentThisMonthLabel(currency: currency),
                         icon: "chart.pie.fill",
                         gradient: LinearGradient(
-                            colors: [Color(red: 0.28, green: 0.55, blue: 0.98),
-                                     Color(red: 0.45, green: 0.28, blue: 0.92)],
+                            colors: [.blue, .blue],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ),
-                        iconAccent: .blue
+                        iconAccent: RMDesign.accent
                     )
 
                     HeroKPICard(
@@ -103,8 +100,7 @@ private var allBills: [Bill]
                         subtitle: analytics.anomalySubtitle,
                         icon: "bell.badge.fill",
                         gradient: LinearGradient(
-                            colors: [Color(red: 0.62, green: 0.28, blue: 0.95),
-                                     Color(red: 0.85, green: 0.25, blue: 0.75)],
+                            colors: [.purple, .purple],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ),
                         iconAccent: .purple
@@ -115,21 +111,21 @@ private var allBills: [Bill]
                 // MARK: - Budget Progress
                 if analytics.totalBudget > 0 {
                     BudgetProgressCard(
-                        spent: analytics.totalSpentThisMonth,
+                        paid: analytics.totalPaidThisMonth,
+                        expected: analytics.totalExpectedThisMonth,
                         budget: analytics.totalBudget,
-                        progress: analytics.budgetProgress,
                         currency: currency
                     )
                     .padding(.horizontal, 24)
                 }
 
                 // MARK: - Charts Row
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
                     RMContentCard(
                         title: "Expenses by Category",
                         icon: "chart.pie.fill",
-                        iconColor: .blue,
-                        subtitle: analytics.spentThisMonthLabel
+                        iconColor: RMDesign.accent,
+                        subtitle: analytics.spentThisMonthLabel(currency: currency)
                     ) {
                         if analytics.expensesByCategory.isEmpty || analytics.totalForCategoryChart <= 0 {
                             SmallEmptyState(icon: "chart.pie", message: "No expenses recorded")
@@ -141,18 +137,18 @@ private var allBills: [Bill]
                                     angularInset: 2
                                 )
                                 .foregroundStyle(item.color.gradient)
-                                .cornerRadius(4)
+                                .cornerRadius(3)
                                 .annotation(position: .overlay) {
                                     let share = item.amount / analytics.totalForCategoryChart
                                     if share.isFinite && share > 0.15 {
                                         Text("\(Int(share * 100))%")
-                                            .font(.system(size: 11, weight: .bold))
+                                            .font(.system(size: 11, weight: .semibold))
                                             .foregroundStyle(.white)
                                     }
                                 }
                             }
                             .chartLegend(position: .bottom, alignment: .center, spacing: 12)
-                            .frame(height: 260)
+                            .frame(height: 240)
                         }
                     }
 
@@ -166,10 +162,10 @@ private var allBills: [Bill]
                             SmallEmptyState(
                                 icon: "checkmark.seal.fill",
                                 message: "All bills look normal",
-                                color: .green
+                                color: RMDesign.success
                             )
                         } else {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 6) {
                                 ForEach(analytics.anomalyReports.prefix(4)) { anomaly in
                                     AnomalyRow(anomaly: anomaly, currency: currency)
                                 }
@@ -178,41 +174,30 @@ private var allBills: [Bill]
                     }
                 }
                 .padding(.horizontal, 24)
-                .frame(maxHeight: 400)
+                .frame(maxHeight: 380)
 
                 // MARK: - Action Center
                 RMContentCard(
                     title: "Action Center",
                     icon: "list.bullet.circle.fill",
-                    iconColor: .red,
+                    iconColor: RMDesign.danger,
                     subtitle: actionCenterSubtitle
                 ) {
                     if analytics.unpaidBills.isEmpty {
                         SmallEmptyState(
                             icon: "checkmark.circle.fill",
                             message: "All bills are paid. Great job!",
-                            color: .green
+                            color: RMDesign.success
                         )
                     } else {
-                        VStack(spacing: 6) {
+                        VStack(spacing: 4) {
                             // Overdue section
                             if !analytics.overdueBills.isEmpty {
-                                HStack {
-                                    Text("Overdue")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.red)
-                                        .tracking(0.5)
-                                    Spacer()
-                                    Text("\(analytics.overdueBills.count)")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.red)
-                                        .clipShape(Capsule())
-                                }
-                                .padding(.horizontal, 4)
-                                .padding(.bottom, 2)
+                                SectionBadge(
+                                    title: "Overdue",
+                                    count: analytics.overdueBills.count,
+                                    color: RMDesign.danger
+                                )
 
                                 ForEach(analytics.overdueBills.prefix(3)) { bill in
                                     UnpaidBillRow(
@@ -227,25 +212,16 @@ private var allBills: [Bill]
                             let nonOverdue = analytics.unpaidBills.filter { $0.dueDate >= Date() }
                             if !nonOverdue.isEmpty {
                                 if !analytics.overdueBills.isEmpty {
-                                    Divider().padding(.vertical, 4)
+                                    Divider()
+                                        .background(RMDesign.dividerColor)
+                                        .padding(.vertical, 6)
                                 }
 
-                                HStack {
-                                    Text("Upcoming")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.orange)
-                                        .tracking(0.5)
-                                    Spacer()
-                                    Text("\(nonOverdue.count)")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.orange)
-                                        .clipShape(Capsule())
-                                }
-                                .padding(.horizontal, 4)
-                                .padding(.bottom, 2)
+                                SectionBadge(
+                                    title: "Upcoming",
+                                    count: nonOverdue.count,
+                                    color: RMDesign.warning
+                                )
 
                                 ForEach(nonOverdue.prefix(5)) { bill in
                                     UnpaidBillRow(
@@ -260,7 +236,7 @@ private var allBills: [Bill]
                 }
                 .padding(.horizontal, 24)
             }
-            .padding(.vertical, 24)
+            .padding(.vertical, 20)
         }
         .background(RMDesign.pageBackground)
         .task {
@@ -279,27 +255,20 @@ private var allBills: [Bill]
                     .frame(width: 6, height: 6)
 
                 Text(freshnessText(at: context.date))
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(Color.gray.opacity(0.08))
-                    .overlay(Capsule().stroke(Color.gray.opacity(0.12), lineWidth: 0.75))
-            )
             .help("Data updates automatically as bills sync")
         }
     }
 
     private var freshnessColor: Color {
-        guard let last = syncService.lastSyncAt else { return .gray }
+        guard let last = syncService.lastSyncAt else { return .secondary }
         let secondsAgo = Date().timeIntervalSince(last)
-        if secondsAgo < 60 { return .green }
-        if secondsAgo < 600 { return .orange }
-        return .red
+        if secondsAgo < 60 { return RMDesign.success }
+        if secondsAgo < 600 { return RMDesign.warning }
+        return RMDesign.danger
     }
 
     private func freshnessText(at date: Date) -> String {
@@ -340,24 +309,24 @@ private var allBills: [Bill]
         return "Unusual spending patterns"
     }
 
-   private func markBillAsPaid(_ bill: Bill) {
-    guard !bill.isPaid else { return }
-    bill.isPaid = true
-    bill.paymentDate = Date()
-    bill.syncStatus = .pendingUpload
-    bill.updatedAt = Date()
+    private func markBillAsPaid(_ bill: Bill) {
+        guard !bill.isPaid else { return }
+        bill.isPaid = true
+        bill.paymentDate = Date()
+        bill.syncStatus = .pendingUpload
+        bill.updatedAt = Date()
 
-    AuditLog.shared.billMarkedPaid(bill, isPaid: true, context: modelContext)
+        AuditLog.shared.billMarkedPaid(bill, isPaid: true, context: modelContext)
 
-    try? modelContext.save()
-    SyncService.shared.schedulePush()
-}
+        try? modelContext.save()
+        SyncService.shared.schedulePush()
+    }
 
     // MARK: - Property Filter
     private var propertyFilter: some View {
         Menu {
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(RMDesign.ease) {
                     selectedPropertyId = nil
                 }
             } label: {
@@ -368,7 +337,7 @@ private var allBills: [Bill]
                 Divider()
                 ForEach(properties) { property in
                     Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
+                        withAnimation(RMDesign.ease) {
                             selectedPropertyId = property.id
                         }
                     } label: {
@@ -380,21 +349,23 @@ private var allBills: [Bill]
                 }
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                    .font(.system(size: 13))
+                    .font(.system(size: 12))
+                    .foregroundStyle(RMDesign.accent)
                 Text(selectedPropertyLabel)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
             .background(RMDesign.cardBackground)
-            .cornerRadius(RMDesign.pillRadius)
+            .clipShape(Capsule())
             .overlay(
-                Capsule().stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                Capsule().stroke(RMDesign.borderColor, lineWidth: 1)
             )
         }
         .menuStyle(.borderlessButton)
@@ -411,82 +382,191 @@ private var allBills: [Bill]
     }
 }
 
-// MARK: - Budget Progress Card
+// MARK: - Section Badge (small pill header used in Action Center)
+private struct SectionBadge: View {
+    let title: String
+    let count: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(.secondary)
+
+            Text("\(count)")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(color)
+                .clipShape(Capsule())
+
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 2)
+    }
+}
+
+// MARK: - Budget Progress Card (dual-layer bar)
+//
+// Layer 1 (solid)      = amount actually paid this month
+// Layer 2 (tinted)     = amount committed (paid + expected) this month
+// Status color driven by `committed / budget` — that's what determines
+// whether you'll stay within budget.
 struct BudgetProgressCard: View {
-    let spent: Double
+    let paid: Double
+    let expected: Double
     let budget: Double
-    let progress: Double
     let currency: AppCurrency
 
-    private var isOverBudget: Bool { progress >= 1.0 }
-    private var isWarning: Bool { progress >= 0.8 && progress < 1.0 }
+    private var committed: Double { paid + expected }
+    private var remaining: Double { max(0, budget - committed) }
+
+    private var paidProgress: Double {
+        guard budget > 0 else { return 0 }
+        return min(paid / budget, 1.0)
+    }
+
+    private var committedProgress: Double {
+        guard budget > 0 else { return 0 }
+        return min(committed / budget, 1.0)
+    }
+
+    private var isOver: Bool { committed > budget }
+    private var isWarning: Bool { !isOver && committed >= budget * 0.8 }
+    private var isIdle: Bool { paid == 0 && expected == 0 }
 
     private var statusColor: Color {
-        if isOverBudget { return .red }
-        if isWarning { return .orange }
-        return .green
+        if isOver { return RMDesign.danger }
+        if isWarning { return RMDesign.warning }
+        return RMDesign.success
     }
 
     private var statusText: String {
-        if isOverBudget { return "Over budget" }
+        if isIdle { return "No activity" }
+        if isOver { return "Over budget" }
+        if paid == 0 && expected > 0 { return "Committed" }
+        if expected == 0 { return "All paid" }
         if isWarning { return "Approaching limit" }
         return "On track"
     }
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack {
-                HStack(spacing: 10) {
-                    Image(systemName: "gauge.medium")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 30, height: 30)
-                        .background(statusColor.gradient)
-                        .cornerRadius(9)
+        VStack(spacing: 12) {
+            // ── Header row ──
+            HStack(spacing: 10) {
+                Image(systemName: "gauge.medium")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(statusColor)
+                    .frame(width: 24, height: 24)
+                    .background(statusColor.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Monthly Budget")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("\(CurrencyFormatter.format(spent, as: currency)) of \(CurrencyFormatter.format(budget, as: currency))")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Monthly Budget")
+                        .font(.system(size: 12.5, weight: .semibold))
+                    Text("\(CurrencyFormatter.format(paid, as: currency)) paid of \(CurrencyFormatter.format(budget, as: currency))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
 
                 Spacer()
 
                 Text(statusText)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.3)
                     .foregroundStyle(statusColor)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
                     .background(statusColor.opacity(0.12))
-                    .cornerRadius(RMDesign.pillRadius)
+                    .clipShape(Capsule())
             }
 
+            // ── Dual-layer progress bar ──
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
+                    // Track
                     Capsule()
-                        .fill(Color.gray.opacity(0.12))
-                        .frame(height: 8)
+                        .fill(Color.gray.opacity(0.10))
 
-                    Capsule()
-                        .fill(statusColor.gradient)
-                        .frame(width: geo.size.width * progress, height: 8)
+                    // Committed layer (paid + expected) — tinted
+                    if committedProgress > 0 {
+                        Capsule()
+                            .fill(statusColor.opacity(0.30))
+                            .frame(width: geo.size.width * committedProgress)
+                    }
+
+                    // Paid layer — solid
+                    if paidProgress > 0 {
+                        Capsule()
+                            .fill(statusColor)
+                            .frame(width: geo.size.width * paidProgress)
+                    }
                 }
             }
             .frame(height: 8)
+
+            // ── Numeric breakdown ──
+            HStack(spacing: 0) {
+                budgetFact(
+                    label: "Paid",
+                    value: CurrencyFormatter.format(paid, as: currency),
+                    color: RMDesign.success
+                )
+                budgetSeparator
+                budgetFact(
+                    label: "Expected",
+                    value: CurrencyFormatter.format(expected, as: currency),
+                    color: RMDesign.warning
+                )
+                budgetSeparator
+                budgetFact(
+                    label: isOver ? "Over by" : "Left",
+                    value: isOver
+                        ? CurrencyFormatter.format(committed - budget, as: currency)
+                        : CurrencyFormatter.format(remaining, as: currency),
+                    color: isOver ? RMDesign.danger : RMDesign.accent
+                )
+            }
         }
-        .padding(18)
+        .padding(14)
         .background(RMDesign.cardBackground)
-        .cornerRadius(RMDesign.cardRadius)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
             RoundedRectangle(cornerRadius: RMDesign.cardRadius)
-                .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
+    }
+
+    // MARK: - Small fact column
+    private func budgetFact(label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.4)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 12, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var budgetSeparator: some View {
+        Rectangle()
+            .fill(RMDesign.dividerColor)
+            .frame(width: 1, height: 22)
     }
 }
 
+// MARK: - Anomaly Row
 struct AnomalyRow: View {
     let anomaly: Anomaly
     let currency: AppCurrency
@@ -494,7 +574,6 @@ struct AnomalyRow: View {
     @State private var isHovered = false
 
     private var bill: Bill { anomaly.bill }
-
     private var isOverLimit: Bool { anomaly.kind.isOverLimit }
 
     private var badgeText: String {
@@ -515,56 +594,47 @@ struct AnomalyRow: View {
         }
     }
 
-    private var amountColor: Color {
-        isOverLimit ? .red : .orange
-    }
-
     private var accentColor: Color {
-        isOverLimit ? .red : .purple
+        isOverLimit ? RMDesign.danger : .purple
     }
 
     var body: some View {
         HStack(spacing: 10) {
-            // Icon — red alert for over-limit, category icon for outliers
             Image(systemName: isOverLimit ? "exclamationmark.octagon.fill" : bill.category.iconName)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(isOverLimit ? AnyShapeStyle(Color.white) : AnyShapeStyle(accentColor))
-                .frame(width: 28, height: 28)
-                .background(
-                    isOverLimit
-                        ? AnyShapeStyle(Color.red.gradient)
-                        : AnyShapeStyle(accentColor.opacity(0.12))
-                )
-                .cornerRadius(8)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(accentColor)
+                .frame(width: 24, height: 24)
+                .background(accentColor.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(bill.title)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12.5, weight: .medium))
                         .lineLimit(1)
 
                     Text(badgeText)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(accentColor.gradient)
-                        .cornerRadius(4)
+                        .background(accentColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
 
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Text(bill.property?.name ?? "Unknown")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
-                    Text("•")
+                    Text("·")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
 
                     Text(detailText)
                         .font(.system(size: 11))
-                        .foregroundStyle(accentColor.opacity(0.9))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
@@ -572,20 +642,22 @@ struct AnomalyRow: View {
             Spacer()
 
             Text(CurrencyFormatter.format(bill.amount, as: currency))
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(amountColor)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(isOverLimit ? RMDesign.danger : .primary)
                 .monospacedDigit()
         }
-        .padding(10)
-        .background(isHovered ? accentColor.opacity(0.05) : Color.clear)
-        .cornerRadius(8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(isHovered ? Color.gray.opacity(0.04) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) {
+            withAnimation(RMDesign.ease) {
                 isHovered = hovering
             }
         }
     }
 }
+
 // MARK: - Unpaid Bill Row
 struct UnpaidBillRow: View {
     let bill: Bill
@@ -612,79 +684,86 @@ struct UnpaidBillRow: View {
         return "Due in \(daysUntilDue)d"
     }
 
-    // 🆕 Over-limit awareness
     private var isOverLimit: Bool {
         guard let limit = BillLimits.shared.limit(for: bill.title) else { return false }
         return bill.amount > limit
     }
 
+    private var rowTint: Color {
+        if isOverdue { return RMDesign.danger }
+        if isOverLimit { return RMDesign.warning }
+        return RMDesign.accent
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(isOverdue ? Color.red : (isOverLimit ? Color.orange : Color.blue))
-                .frame(width: 8, height: 8)
+        HStack(spacing: 10) {
+            Rectangle()
+                .fill(rowTint)
+                .frame(width: 2)
+                .clipShape(Capsule())
 
             Image(systemName: bill.category.iconName)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(bill.category.color)
-                .frame(width: 30, height: 30)
-                .background(bill.category.color.opacity(0.12))
-                .cornerRadius(8)
+                .frame(width: 26, height: 26)
+                .background(bill.category.color.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(bill.title)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12.5, weight: .medium))
                         .lineLimit(1)
                     if isOverLimit {
                         Text("OVER")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.red.gradient)
-                            .cornerRadius(3)
+                            .background(RMDesign.danger)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
                     }
                 }
 
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Text(bill.property?.name ?? "Unknown")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
-                    Text("•")
+                    Text("·")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
 
                     Text(dueText)
-                        .font(.system(size: 10, weight: isOverdue ? .semibold : .regular))
-                        .foregroundStyle(isOverdue ? .red : .secondary)
+                        .font(.system(size: 10.5, weight: isOverdue ? .semibold : .regular))
+                        .foregroundStyle(isOverdue ? RMDesign.danger : .secondary)
                 }
             }
 
             Spacer()
 
             Text(CurrencyFormatter.format(bill.amount, as: currency))
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(.system(size: 12.5, weight: .semibold))
                 .monospacedDigit()
 
             Button(action: onMarkPaid) {
                 Label("Pay", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.green)
+            .tint(RMDesign.success)
             .controlSize(.small)
-            .opacity(isHovered ? 1 : 0.7)
+            .opacity(isHovered ? 1 : 0.75)
         }
-        .padding(10)
-        .background(isHovered ? Color.blue.opacity(0.04) : Color.clear)
-        .cornerRadius(10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(isHovered ? Color.gray.opacity(0.04) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) {
+            withAnimation(RMDesign.ease) {
                 isHovered = hovering
             }
         }
@@ -698,16 +777,16 @@ struct SmallEmptyState: View {
     var color: Color = .secondary
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(color.opacity(0.7))
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(color.opacity(0.6))
             Text(message)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 180)
+        .frame(minHeight: 160)
     }
 }

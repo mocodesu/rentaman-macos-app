@@ -38,60 +38,87 @@ struct DashboardAnalytics {
         return total.isFinite ? total : 0
     }
 
-   // MARK: - KPI 2: Upcoming (Today + next 6 days = 7-day window)
-var upcomingBills: [Bill] {
-    let startOfToday = calendar.startOfDay(for: now)
-    guard let endDate = calendar.date(byAdding: .day, value: 7, to: startOfToday) else {
-        return []
+    // MARK: - KPI 2: Upcoming (Today + next 6 days = 7-day window)
+    var upcomingBills: [Bill] {
+        let startOfToday = calendar.startOfDay(for: now)
+        guard let endDate = calendar.date(byAdding: .day, value: 7, to: startOfToday) else {
+            return []
+        }
+        return unpaidBills.filter { bill in
+            let due = calendar.startOfDay(for: bill.dueDate)
+            return due >= startOfToday && due < endDate
+        }
+        .sorted { $0.dueDate < $1.dueDate }
     }
-    return unpaidBills.filter { bill in
-        let due = calendar.startOfDay(for: bill.dueDate)
-        return due >= startOfToday && due < endDate
-    }
-    .sorted { $0.dueDate < $1.dueDate }
-}
 
-var overdueBills: [Bill] {
-    let startOfToday = calendar.startOfDay(for: now)
-    return unpaidBills.filter { bill in
-        calendar.startOfDay(for: bill.dueDate) < startOfToday
+    var overdueBills: [Bill] {
+        let startOfToday = calendar.startOfDay(for: now)
+        return unpaidBills.filter { bill in
+            calendar.startOfDay(for: bill.dueDate) < startOfToday
+        }
+        .sorted { $0.dueDate < $1.dueDate }
     }
-    .sorted { $0.dueDate < $1.dueDate }
-}
- 
 
-    // MARK: - KPI 3: Spent This Month
-    var totalSpentThisMonth: Double {
+    // MARK: - KPI 3: Spent This Month (paid) + Expected (unpaid)
+
+    /// Amount actually PAID this month (attributed to `paymentDate`).
+    /// Returns 0 at the start of a new month until the first bill is paid —
+    /// never falls back to a previous month.
+    var totalPaidThisMonth: Double {
         let currentMonth = calendar.component(.month, from: now)
-        let currentYear = calendar.component(.year, from: now)
+        let currentYear  = calendar.component(.year, from: now)
 
         let total = bills
             .filter { bill in
-                let effectiveDate = bill.isPaid ? (bill.paymentDate ?? bill.dueDate) : bill.dueDate
-                return isSameMonth(effectiveDate, month: currentMonth, year: currentYear)
+                guard bill.isPaid else { return false }
+                let d = bill.paymentDate ?? bill.dueDate
+                return isSameMonth(d, month: currentMonth, year: currentYear)
             }
             .reduce(0.0) { $0 + $1.amount }
 
         return total.isFinite ? total : 0
     }
 
-    var spentThisMonthLabel: String {
-        let totalBillsInMonth = bills.filter { bill in
-            let effectiveDate = bill.isPaid ? (bill.paymentDate ?? bill.dueDate) : bill.dueDate
-            let month = calendar.component(.month, from: now)
-            let year = calendar.component(.year, from: now)
-            return isSameMonth(effectiveDate, month: month, year: year)
-        }
+    /// Amount still expected this month — unpaid bills whose due date
+    /// lands in the current month. This is what remains to be paid.
+    var totalExpectedThisMonth: Double {
+        let currentMonth = calendar.component(.month, from: now)
+        let currentYear  = calendar.component(.year, from: now)
 
-        if totalBillsInMonth.isEmpty { return "No activity this month" }
+        let total = bills
+            .filter { bill in
+                guard !bill.isPaid else { return false }
+                return isSameMonth(bill.dueDate, month: currentMonth, year: currentYear)
+            }
+            .reduce(0.0) { $0 + $1.amount }
 
-        let paidCount = totalBillsInMonth.filter { $0.isPaid }.count
-        let unpaidCount = totalBillsInMonth.count - paidCount
+        return total.isFinite ? total : 0
+    }
+
+    /// Total monthly commitment (paid + expected).
+    /// Used for budget progress and chart labels. Never falls back to a
+    /// previous month — always reflects the current calendar month only.
+    var totalSpentThisMonth: Double {
+        totalPaidThisMonth + totalExpectedThisMonth
+    }
+
+    /// Subtitle for the "Spent This Month" KPI. Shows the expected
+    /// amount when nothing has been paid yet this month.
+    func spentThisMonthLabel(currency: AppCurrency) -> String {
+        let paid     = totalPaidThisMonth
+        let expected = totalExpectedThisMonth
         let monthName = now.formatted(.dateTime.month(.wide).year())
 
-        if unpaidCount == 0 { return "\(monthName) · all paid" }
-        if paidCount == 0 { return "\(monthName) · expected" }
-        return "\(monthName) · paid + committed"
+        if paid == 0 && expected == 0 {
+            return "No activity this month"
+        }
+        if paid == 0 {
+            return "Expected: \(CurrencyFormatter.format(expected, as: currency))"
+        }
+        if expected == 0 {
+            return "\(monthName) · All paid"
+        }
+        return "Expected: \(CurrencyFormatter.format(expected, as: currency)) remaining"
     }
 
     private func isSameMonth(_ date: Date, month: Int, year: Int) -> Bool {
@@ -108,8 +135,7 @@ var overdueBills: [Bill] {
     ///      6 months.
     ///
     /// A bill that qualifies for both is reported once as an over-limit
-    /// anomaly (user-set thresholds take precedence over statistical
-    /// ones).
+    /// anomaly (user-set thresholds take precedence over statistical ones).
     var anomalyReports: [Anomaly] {
         guard let ninetyDaysAgo = calendar.date(byAdding: .day, value: -90, to: now),
               let sixMonthsAgo = calendar.date(byAdding: .month, value: -6, to: now) else {
@@ -167,8 +193,7 @@ var overdueBills: [Bill] {
         }
     }
 
-    /// Backward-compatible list of flagged bills (used anywhere that still
-    /// expects `[Bill]`). Prefer `anomalyReports` for new code.
+    /// Backward-compatible list of flagged bills.
     var anomalies: [Bill] {
         anomalyReports.map { $0.bill }
     }

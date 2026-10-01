@@ -24,9 +24,9 @@ enum BillTrendDirection {
 
     var color: Color {
         switch self {
-        case .rising:  return .red
+        case .rising:  return RMDesign.danger
         case .stable:  return .secondary
-        case .falling: return .green
+        case .falling: return RMDesign.success
         }
     }
 }
@@ -72,10 +72,10 @@ struct BillImpactAnalytics {
             }
             var color: Color {
                 switch self {
-                case .critical: return .red
-                case .warning:  return .orange
-                case .tip:      return .blue
-                case .good:     return .green
+                case .critical: return RMDesign.danger
+                case .warning:  return RMDesign.warning
+                case .tip:      return RMDesign.accent
+                case .good:     return RMDesign.success
                 }
             }
         }
@@ -292,7 +292,7 @@ struct BillImpactView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
     @Environment(\.dismiss) private var dismiss
     @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
+    private var allBills: [Bill]
 
     @State private var window: ImpactWindow = .twelve
     @State private var selectedCategory: ExpenseCategory? = nil
@@ -331,10 +331,10 @@ private var allBills: [Bill]
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Divider().opacity(0.5)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     filterBar
 
                     let result = analysis
@@ -354,6 +354,7 @@ private var allBills: [Bill]
             }
         }
         .frame(minWidth: 860, idealWidth: 960, minHeight: 640, idealHeight: 800)
+        .background(RMDesign.pageBackground)
         .sheet(item: Binding(
             get: { limitEditorTarget.map { LimitTarget(title: $0) } },
             set: { limitEditorTarget = $0?.title }
@@ -380,11 +381,13 @@ private var allBills: [Bill]
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "flame.fill")
-                .font(.title2)
-                .foregroundStyle(.orange)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(RMDesign.warning)
+                .frame(width: 28, height: 28)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text("Bill Impact")
-                    .font(.title2).fontWeight(.bold)
+                    .font(.system(size: 22, weight: .semibold))
                 Text("What's eating your money — and what to do about it")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -392,14 +395,14 @@ private var allBills: [Bill]
             Spacer()
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
+                    .font(.system(size: 18))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
         }
         .padding(20)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(RMDesign.pageBackground)
     }
 
     // MARK: - Filter bar
@@ -445,9 +448,9 @@ private var allBills: [Bill]
         }.count
         let rising = r.items.filter { $0.trend == .rising }.count
 
-        return HStack(spacing: 12) {
+        return HStack(spacing: 10) {
             ImpactStat(
-                icon: "banknote.fill", color: .blue,
+                icon: "banknote.fill", color: RMDesign.accent,
                 label: "Monthly total",
                 value: CurrencyFormatter.format(r.totalMonthly, as: currency)
             )
@@ -458,12 +461,12 @@ private var allBills: [Bill]
             )
             ImpactStat(
                 icon: overLimit > 0 ? "exclamationmark.octagon.fill" : "checkmark.seal.fill",
-                color: overLimit > 0 ? .red : .green,
+                color: overLimit > 0 ? RMDesign.danger : RMDesign.success,
                 label: "Over limit",
                 value: overLimit > 0 ? "\(overLimit) bill\(overLimit == 1 ? "" : "s")" : "None"
             )
             ImpactStat(
-                icon: "arrow.up.right", color: rising > 0 ? .orange : .green,
+                icon: "arrow.up.right", color: rising > 0 ? RMDesign.warning : RMDesign.success,
                 label: "Rising trend",
                 value: rising > 0 ? "\(rising)" : "None"
             )
@@ -472,62 +475,59 @@ private var allBills: [Bill]
 
     // MARK: - Top burner
     private func topBurnerCard(_ item: BillImpactAnalytics.Item, total: Double) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(Color.orange.gradient)
-                    .cornerRadius(7)
-                Text("Top Burner")
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Text("\(Int(item.share * 100))% of monthly spend")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.orange.opacity(0.12))
-                    .cornerRadius(6)
-            }
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(RMDesign.warning)
+                .frame(width: 3)
 
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: item.category.iconName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(item.category.color)
-                Text(item.title)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                Spacer()
-                Text(CurrencyFormatter.format(item.monthlyAverage, as: currency))
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                Text("/mo")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-
-            if let first = item.advice.first {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: first.severity.icon)
-                        .font(.system(size: 12))
-                        .foregroundStyle(first.severity.color)
-                    Text(first.text)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(RMDesign.warning)
+                    Text("Top Burner")
+                        .font(.system(size: 12.5, weight: .semibold))
+                    Spacer()
+                    Text("\(Int(item.share * 100))% of monthly spend")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(RMDesign.warning)
+                        .monospacedDigit()
                 }
-                .padding(10)
-                .background(first.severity.color.opacity(0.08))
-                .cornerRadius(8)
+
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: item.category.iconName)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(item.category.color)
+                    Text(item.title)
+                        .font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Text(CurrencyFormatter.format(item.monthlyAverage, as: currency))
+                        .font(.system(size: 20, weight: .semibold))
+                        .monospacedDigit()
+                    Text("/mo")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                if let first = item.advice.first {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: first.severity.icon)
+                            .font(.system(size: 11))
+                            .foregroundStyle(first.severity.color)
+                        Text(first.text)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
+            .padding(14)
         }
-        .padding(16)
         .background(RMDesign.cardBackground)
-        .cornerRadius(12)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 
@@ -548,26 +548,23 @@ private var allBills: [Bill]
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.bubble.fill")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 26, height: 26)
-                        .background(Color.red.gradient)
-                        .cornerRadius(7)
+                        .foregroundStyle(RMDesign.danger)
                     Text("What to do")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 12.5, weight: .semibold))
                     Spacer()
                     Text("\(actions.count) action\(actions.count == 1 ? "" : "s")")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
 
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
                     ForEach(actions, id: \.1.id) { title, adv in
-                        HStack(alignment: .top, spacing: 10) {
+                        HStack(alignment: .top, spacing: 8) {
                             Image(systemName: adv.severity.icon)
                                 .font(.system(size: 11))
                                 .foregroundStyle(adv.severity.color)
                                 .frame(width: 16)
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 1) {
                                 Text(title)
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(.secondary)
@@ -578,18 +575,19 @@ private var allBills: [Bill]
                             }
                             Spacer()
                         }
-                        .padding(10)
-                        .background(adv.severity.color.opacity(0.06))
-                        .cornerRadius(8)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.gray.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                 }
             }
-            .padding(16)
+            .padding(14)
             .background(RMDesign.cardBackground)
-            .cornerRadius(12)
+            .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                    .stroke(RMDesign.borderColor, lineWidth: 1)
             )
         )
     }
@@ -598,7 +596,7 @@ private var allBills: [Bill]
     private var listHeader: some View {
         HStack {
             Text("All Bills Ranked by Cost")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
             Spacer()
             Text("Tap a bill to set a limit")
                 .font(.system(size: 11))
@@ -608,7 +606,7 @@ private var allBills: [Bill]
 
     // MARK: - List
     private func billList(_ r: (items: [BillImpactAnalytics.Item], totalMonthly: Double)) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             ForEach(Array(r.items.enumerated()), id: \.element.id) { idx, item in
                 BillImpactRow(
                     rank: idx + 1,
@@ -622,12 +620,12 @@ private var allBills: [Bill]
 
     // MARK: - Empty
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 40, weight: .light))
+                .font(.system(size: 32, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("Not enough data")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
             Text("Add bills to see which ones are eating your budget.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -657,38 +655,38 @@ private struct BillImpactRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             // Top row: rank, title, amount, trend
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Text("\(rank)")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .frame(width: 20)
 
                 Image(systemName: item.category.iconName)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(item.category.color)
-                    .frame(width: 26, height: 26)
-                    .background(item.category.color.opacity(0.12))
-                    .cornerRadius(7)
+                    .frame(width: 24, height: 24)
+                    .background(item.category.color.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(item.title)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12.5, weight: .medium))
                             .lineLimit(1)
                         if isOverLimit {
                             Text("OVER LIMIT")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color.red.gradient)
-                                .cornerRadius(4)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(RMDesign.danger)
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
                         }
                     }
                     Text("\(item.occurrences) bills · \(Int(item.share * 100))% of spend")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                 }
 
@@ -697,20 +695,20 @@ private struct BillImpactRow: View {
                 // Trend badge
                 HStack(spacing: 3) {
                     Image(systemName: item.trend.icon)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9, weight: .medium))
                     Text(item.trend.label)
                         .font(.system(size: 10, weight: .medium))
                 }
                 .foregroundStyle(item.trend.color)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(item.trend.color.opacity(0.1))
-                .cornerRadius(5)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(item.trend.color.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
 
                 // Amount
-                VStack(alignment: .trailing, spacing: 1) {
+                VStack(alignment: .trailing, spacing: 0) {
                     Text(CurrencyFormatter.format(item.monthlyAverage, as: currency))
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .semibold))
                         .monospacedDigit()
                     Text("/ month")
                         .font(.system(size: 9))
@@ -724,20 +722,20 @@ private struct BillImpactRow: View {
                 Button(action: onTapLimit) {
                     HStack(spacing: 4) {
                         Image(systemName: item.limit != nil ? "pencil.circle.fill" : "plus.circle")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10, weight: .medium))
                         Text(item.limit != nil
                              ? "Limit \(CurrencyFormatter.format(item.limit!, as: currency))"
                              : "Set limit")
                             .font(.system(size: 10, weight: .medium))
                     }
-                    .foregroundStyle(item.limit != nil ? (isOverLimit ? .red : .blue) : .blue)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .foregroundStyle(item.limit != nil ? (isOverLimit ? RMDesign.danger : RMDesign.accent) : RMDesign.accent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
                     .background(
-                        (item.limit != nil ? (isOverLimit ? Color.red : Color.blue) : Color.blue)
-                            .opacity(0.1)
+                        (item.limit != nil ? (isOverLimit ? RMDesign.danger : RMDesign.accent) : RMDesign.accent)
+                            .opacity(0.10)
                     )
-                    .cornerRadius(5)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
                 .buttonStyle(.plain)
 
@@ -745,11 +743,11 @@ private struct BillImpactRow: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(Color.gray.opacity(0.15))
-                                .frame(height: 5)
+                                .fill(Color.gray.opacity(0.12))
+                                .frame(height: 4)
                             Capsule()
-                                .fill(isOverLimit ? Color.red.gradient : Color.blue.gradient)
-                                .frame(width: geo.size.width * limitProgress, height: 5)
+                                .fill(isOverLimit ? RMDesign.danger : RMDesign.accent)
+                                .frame(width: geo.size.width * limitProgress, height: 4)
                         }
                         .frame(maxHeight: .infinity, alignment: .center)
                     }
@@ -767,7 +765,7 @@ private struct BillImpactRow: View {
 
             // Advice (first 2)
             if !item.advice.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     ForEach(item.advice.prefix(2)) { adv in
                         HStack(alignment: .top, spacing: 6) {
                             Image(systemName: adv.severity.icon)
@@ -785,15 +783,15 @@ private struct BillImpactRow: View {
             }
         }
         .padding(12)
-        .background(isHovered ? Color.blue.opacity(0.04) : RMDesign.cardBackground)
-        .cornerRadius(10)
+        .background(isHovered ? Color.gray.opacity(0.04) : RMDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isOverLimit ? Color.red.opacity(0.3) : Color.gray.opacity(0.08),
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(isOverLimit ? RMDesign.danger.opacity(0.35) : RMDesign.borderColor,
                         lineWidth: isOverLimit ? 1.2 : 1)
         )
         .onHover { hover in
-            withAnimation(.easeOut(duration: 0.12)) { isHovered = hover }
+            withAnimation(RMDesign.ease) { isHovered = hover }
         }
     }
 }
@@ -809,15 +807,15 @@ private struct ImpactStat: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(color)
                 Text(label.uppercased())
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
             }
             Text(value)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 14, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -825,10 +823,10 @@ private struct ImpactStat: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(RMDesign.cardBackground)
-        .cornerRadius(10)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 }
@@ -847,13 +845,13 @@ private struct BillLimitEditor: View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "gauge.medium")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(RMDesign.accent)
                 Text("Set Spending Limit")
-                    .font(.title3).fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
             }
-            .padding(20)
+            .padding(16)
 
             Divider()
 
@@ -863,7 +861,7 @@ private struct BillLimitEditor: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                     Text(title)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -872,22 +870,22 @@ private struct BillLimitEditor: View {
                         .foregroundStyle(.secondary)
                     HStack {
                         Text(currency.symbol)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
                         TextField("0.00", text: $amountText)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
                             .onChange(of: amountText) { _, newValue in
                                 let filtered = newValue.filter { "0123456789.".contains($0) }
                                 if filtered != newValue { amountText = filtered }
                             }
                     }
                     .padding(10)
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(8)
+                    .background(RMDesign.fieldBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: RMDesign.fieldRadius))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: RMDesign.fieldRadius)
+                            .stroke(RMDesign.borderColor, lineWidth: 1)
                     )
                 }
 
@@ -896,7 +894,7 @@ private struct BillLimitEditor: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(20)
+            .padding(16)
 
             Divider()
 
@@ -906,7 +904,7 @@ private struct BillLimitEditor: View {
                         onSave(nil)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.red)
+                    .tint(RMDesign.danger)
                 }
                 Spacer()
                 Button("Cancel") { onCancel() }
@@ -923,7 +921,7 @@ private struct BillLimitEditor: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(Double(amountText) == nil)
             }
-            .padding(20)
+            .padding(16)
         }
         .frame(width: 440)
         .onAppear {

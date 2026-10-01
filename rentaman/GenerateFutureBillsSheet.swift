@@ -14,7 +14,7 @@ struct FutureBillsGenerator {
         let frequency: RecurringFrequency
         let lastDueDate: Date
         let instanceCount: Int
-        let isPaused: Bool     // 🆕
+        let isPaused: Bool
 
         var effectiveFrequency: RecurringFrequency {
             frequency == .none ? .monthly : frequency
@@ -56,7 +56,6 @@ struct FutureBillsGenerator {
             )
         }
         .sorted { lhs, rhs in
-            // Active templates before paused ones
             if lhs.isPaused != rhs.isPaused {
                 return !lhs.isPaused
             }
@@ -81,7 +80,6 @@ struct FutureBillsGenerator {
         periodsForward: Int,
         context: ModelContext
     ) -> GenerationResult {
-        // 🆕 Exclude paused templates defensively.
         let activeTemplates = templates.filter { !$0.isPaused }
 
         guard !activeTemplates.isEmpty, periodsForward > 0 else {
@@ -298,8 +296,8 @@ struct GenerateFutureBillsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appCurrency) private var currency: AppCurrency
-   @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+    private var allBills: [Bill]
 
     @State private var periodsForward: Int = 6
     @State private var selectedIds: Set<String> = []
@@ -337,7 +335,7 @@ private var allBills: [Bill]
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Divider().opacity(0.5)
 
             if templates.isEmpty {
                 emptyState
@@ -345,20 +343,21 @@ private var allBills: [Bill]
                 resultView(result)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
                         periodPicker
                         summaryCard
                         listHeader
                         templatesList
                     }
-                    .padding(20)
+                    .padding(16)
                 }
             }
 
-            Divider()
+            Divider().opacity(0.5)
             footer
         }
         .frame(width: 640, height: 680)
+        .background(RMDesign.pageBackground)
         .onAppear {
             selectedIds = Set(activeTemplates.map { $0.id })
         }
@@ -366,61 +365,65 @@ private var allBills: [Bill]
 
     // MARK: - Header
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "calendar.badge.plus")
-                .font(.title2)
-                .foregroundStyle(.blue)
-            VStack(alignment: .leading, spacing: 2) {
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(RMDesign.accent)
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Generate Future Bills")
-                    .font(.title2).fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Text("Pre-create your recurring bills from the next cycle onward")
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
+                    .font(.system(size: 16))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
         }
-        .padding(20)
+        .padding(16)
     }
 
     // MARK: - Period picker
     private var periodPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("How many future cycles?")
                 .font(.system(size: 12, weight: .semibold))
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach([3, 6, 12], id: \.self) { m in
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(RMDesign.ease) {
                             periodsForward = m
                         }
                     } label: {
                         VStack(spacing: 2) {
                             Text("\(m)")
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .font(.system(size: 16, weight: .semibold))
                                 .monospacedDigit()
                             Text("cycles")
                                 .font(.system(size: 10))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 10)
                         .foregroundStyle(periodsForward == m ? .white : .primary)
                         .background {
                             if periodsForward == m {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.blue.gradient)
+                                RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                                    .fill(RMDesign.accent)
                             } else {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.gray.opacity(0.08))
+                                RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                                    .fill(RMDesign.cardBackground)
                             }
                         }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                                .stroke(periodsForward == m ? Color.clear : RMDesign.borderColor, lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -434,54 +437,49 @@ private var allBills: [Bill]
 
     // MARK: - Summary
     private var summaryCard: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Will create")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
                 Text("\(projectedNewCount) bills")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(RMDesign.accent)
             }
-            Divider().frame(height: 34)
-            VStack(alignment: .leading, spacing: 4) {
+            Divider().frame(height: 30)
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Total value")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
                 Text(CurrencyFormatter.format(projectedCost, as: currency))
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(.green)
+                    .foregroundStyle(RMDesign.success)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
-            Divider().frame(height: 34)
-            VStack(alignment: .leading, spacing: 4) {
+            Divider().frame(height: 30)
+            VStack(alignment: .leading, spacing: 3) {
                 Text("First cycle")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
                 Text(previewFirstDate.map { $0.formatted(.dateTime.day().month(.abbreviated).year(.twoDigits)) } ?? "—")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(.purple)
             }
             Spacer()
         }
-        .padding(14)
-        .background(
-            LinearGradient(
-                colors: [Color.blue.opacity(0.08), Color.green.opacity(0.05)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-        )
-        .cornerRadius(12)
+        .padding(12)
+        .background(RMDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.blue.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 
@@ -500,14 +498,14 @@ private var allBills: [Bill]
             }
             .font(.system(size: 11, weight: .medium))
             .buttonStyle(.plain)
-            .foregroundStyle(.blue)
+            .foregroundStyle(RMDesign.accent)
             .disabled(activeTemplates.isEmpty)
         }
     }
 
     // MARK: - List
     private var templatesList: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             ForEach(activeTemplates) { template in
                 templateRow(template, enabled: true)
             }
@@ -516,7 +514,7 @@ private var allBills: [Bill]
                 HStack(spacing: 6) {
                     Image(systemName: "pause.circle.fill")
                         .font(.system(size: 10))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(RMDesign.warning)
                     Text("Paused")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -525,7 +523,7 @@ private var allBills: [Bill]
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.top, 10)
+                .padding(.top, 8)
                 .padding(.horizontal, 4)
 
                 ForEach(pausedTemplates) { template in
@@ -542,7 +540,7 @@ private var allBills: [Bill]
 
         Button {
             guard enabled else { return }
-            withAnimation(.easeOut(duration: 0.12)) {
+            withAnimation(RMDesign.ease) {
                 if isSelected {
                     selectedIds.remove(template.id)
                 } else {
@@ -550,40 +548,40 @@ private var allBills: [Bill]
                 }
             }
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: enabled
                       ? (isSelected ? "checkmark.circle.fill" : "circle")
                       : "pause.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.system(size: 14))
                     .foregroundStyle(enabled
-                                     ? (isSelected ? .blue : .secondary)
-                                     : .orange)
+                                     ? (isSelected ? RMDesign.accent : .secondary)
+                                     : RMDesign.warning)
 
                 Image(systemName: template.category.iconName)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(template.category.color)
-                    .frame(width: 28, height: 28)
-                    .background(template.category.color.opacity(0.12))
-                    .cornerRadius(7)
+                    .frame(width: 24, height: 24)
+                    .background(template.category.color.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(template.title)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 12.5, weight: .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
 
                         if template.isPaused {
                             Text("PAUSED")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
-                                .background(Color.orange.gradient)
-                                .cornerRadius(3)
+                                .background(RMDesign.warning)
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
                         }
                     }
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         if let prop = template.property {
                             Text(prop.name)
                                 .font(.system(size: 10))
@@ -595,7 +593,7 @@ private var allBills: [Bill]
                         }
                         Text("day \(day)")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(RMDesign.accent)
                         Text("·")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
@@ -614,22 +612,22 @@ private var allBills: [Bill]
                 Spacer()
 
                 Text(CurrencyFormatter.format(template.amount, as: currency))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(.primary)
             }
-            .padding(10)
+            .padding(9)
             .background(enabled
-                        ? (isSelected ? Color.blue.opacity(0.04) : Color(NSColor.controlBackgroundColor))
-                        : Color.orange.opacity(0.04))
-            .cornerRadius(9)
+                        ? (isSelected ? RMDesign.accent.opacity(0.05) : RMDesign.cardBackground)
+                        : RMDesign.warning.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 9)
+                RoundedRectangle(cornerRadius: RMDesign.cardRadius)
                     .stroke(
                         enabled
-                            ? (isSelected ? Color.blue.opacity(0.3) : Color.gray.opacity(0.1))
-                            : Color.orange.opacity(0.25),
-                        lineWidth: enabled ? (isSelected ? 1.2 : 1) : 1
+                            ? (isSelected ? RMDesign.accent.opacity(0.35) : RMDesign.borderColor)
+                            : RMDesign.warning.opacity(0.25),
+                        lineWidth: enabled ? (isSelected ? 1.3 : 1) : 1
                     )
             )
             .opacity(enabled ? 1.0 : 0.7)
@@ -640,15 +638,15 @@ private var allBills: [Bill]
 
     // MARK: - Result
     private func resultView(_ result: FutureBillsGenerator.GenerationResult) -> some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 18) {
             Spacer()
             Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.green.gradient)
+                .font(.system(size: 48))
+                .foregroundStyle(RMDesign.success)
 
             VStack(spacing: 6) {
                 Text("Generated \(result.created) new bill\(result.created == 1 ? "" : "s")")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .semibold))
 
                 if let first = result.firstDate, let last = result.lastDate {
                     Text("From \(first.formatted(.dateTime.day().month(.abbreviated).year())) to \(last.formatted(.dateTime.day().month(.abbreviated).year()))")
@@ -669,7 +667,7 @@ private var allBills: [Bill]
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 10))
-                                .foregroundStyle(.green)
+                                .foregroundStyle(RMDesign.success)
                             Text(t)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
@@ -682,13 +680,13 @@ private var allBills: [Bill]
                             .padding(.top, 2)
                     }
                 }
-                .padding(14)
-                .background(Color.green.opacity(0.06))
-                .cornerRadius(10)
+                .padding(12)
+                .background(RMDesign.success.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
             }
             Spacer()
         }
-        .padding(24)
+        .padding(20)
         .frame(maxWidth: .infinity)
     }
 
@@ -706,9 +704,9 @@ private var allBills: [Bill]
 
     // MARK: - Empty
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("No recurring bills found")
                 .font(.system(size: 14, weight: .semibold))
@@ -745,7 +743,7 @@ private var allBills: [Bill]
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
+        .padding(16)
     }
 
     // MARK: - Run
@@ -755,7 +753,7 @@ private var allBills: [Bill]
             periodsForward: periodsForward,
             context: modelContext
         )
-        withAnimation(.easeOut(duration: 0.25)) {
+        withAnimation(RMDesign.ease) {
             result = r
         }
     }

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsTabView: View {
     @State private var selectedSection: SettingsSection = .general
-    
+
     enum SettingsSection: String, CaseIterable, Identifiable {
         case general = "General"
         case properties = "Properties"
@@ -10,9 +10,9 @@ struct SettingsTabView: View {
         case sync = "Sync"
         case data = "Data"
         case about = "About"
-        
+
         var id: String { rawValue }
-        
+
         var icon: String {
             switch self {
             case .general: return "gearshape.fill"
@@ -24,16 +24,16 @@ struct SettingsTabView: View {
             }
         }
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             SettingsSectionPicker(selection: $selectedSection)
                 .padding(.horizontal, 24)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-            
+                .padding(.top, 14)
+                .padding(.bottom, 6)
+
             Divider().opacity(0.5)
-            
+
             Group {
                 switch selectedSection {
                 case .general:       GeneralSettingsView()
@@ -54,29 +54,28 @@ struct SettingsTabView: View {
 private struct SettingsSectionPicker: View {
     @Binding var selection: SettingsTabView.SettingsSection
     @Namespace private var namespace
-    
+
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             ForEach(SettingsTabView.SettingsSection.allCases) { section in
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(RMDesign.ease) {
                         selection = section
                     }
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: section.icon)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10, weight: .medium))
                         Text(section.rawValue)
                             .font(.system(size: 11.5, weight: .medium))
                     }
                     .foregroundStyle(selection == section ? .white : .primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
                     .background {
                         if selection == section {
                             Capsule()
-                                .fill(RMDesign.accentGradient)
-                                .shadow(color: Color.blue.opacity(0.25), radius: 3, y: 1.5)
+                                .fill(RMDesign.accent)
                                 .matchedGeometryEffect(id: "settingsTab", in: namespace)
                         }
                     }
@@ -89,7 +88,7 @@ private struct SettingsSectionPicker: View {
         .background {
             Capsule()
                 .fill(Color.gray.opacity(0.08))
-                .overlay(Capsule().stroke(Color.gray.opacity(0.12), lineWidth: 0.75))
+                .overlay(Capsule().stroke(RMDesign.borderColor, lineWidth: 0.75))
         }
         .fixedSize()
     }

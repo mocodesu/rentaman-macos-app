@@ -4,43 +4,42 @@ import SwiftData
 struct AddBillView: View {
     var billToEdit: Bill? = nil
     var preSelectedPropertyId: String? = nil
-    
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appCurrency) private var appCurrency: AppCurrency
-    
+
     @Query private var properties: [Property]
     @Query private var allBills: [Bill]
-    
+
     @State private var viewModel = AddBillViewModel()
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            
+
             // MARK: - Header
-            HStack {
+            HStack(spacing: 10) {
                 Image(systemName: viewModel.isEditMode ? "square.and.pencil" : "plus.rectangle.on.folder.fill")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(RMDesign.accent)
                 Text(viewModel.isEditMode ? "Edit Bill" : "Add New Bill")
-                    .font(.title2)
-                    .fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Button {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
+                        .font(.system(size: 16))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
             }
-            .padding(20)
-            .background(Color(NSColor.windowBackgroundColor))
-            
-            Divider()
-            
+            .padding(16)
+            .background(RMDesign.pageBackground)
+
+            Divider().opacity(0.5)
+
             // MARK: - Form
             Form {
                 Section {
@@ -50,7 +49,7 @@ struct AddBillView: View {
                             .frame(width: 20)
                         TextField("Title (e.g., KPLC Electricity)", text: $viewModel.title)
                     }
-                    
+
                     HStack {
                         Image(systemName: "tag")
                             .foregroundStyle(.secondary)
@@ -65,7 +64,7 @@ struct AddBillView: View {
                             viewModel.prefillFromHistory(bills: allBills, properties: properties)
                         }
                     }
-                    
+
                     HStack {
                         Image(systemName: "house")
                             .foregroundStyle(.secondary)
@@ -89,7 +88,7 @@ struct AddBillView: View {
                 } header: {
                     Label("Bill Information", systemImage: "doc.text")
                 }
-                
+
                 Section {
                     HStack {
                         Image(systemName: "dollarsign.circle")
@@ -103,7 +102,7 @@ struct AddBillView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 180)
                     }
-                    
+
                     HStack {
                         Image(systemName: "banknote")
                             .foregroundStyle(.secondary)
@@ -121,24 +120,24 @@ struct AddBillView: View {
                 } header: {
                     Label("Amount & Currency", systemImage: "banknote.fill")
                 }
-                
+
                 Section {
                     Toggle(isOn: $viewModel.isPaid) {
                         HStack {
                             Image(systemName: viewModel.isPaid ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(viewModel.isPaid ? .green : .secondary)
+                                .foregroundStyle(viewModel.isPaid ? RMDesign.success : .secondary)
                             Text("Already Paid")
                         }
                     }
                     .toggleStyle(.switch)
-                    
+
                     HStack {
                         Image(systemName: "calendar")
                             .foregroundStyle(.secondary)
                             .frame(width: 20)
                         DatePicker("Due Date", selection: $viewModel.dueDate, displayedComponents: .date)
                     }
-                    
+
                     if viewModel.isPaid {
                         HStack {
                             Image(systemName: "calendar.badge.checkmark")
@@ -146,7 +145,7 @@ struct AddBillView: View {
                                 .frame(width: 20)
                             DatePicker("Payment Date", selection: $viewModel.paymentDate, displayedComponents: .date)
                         }
-                        
+
                         HStack {
                             Image(systemName: viewModel.paymentMethod.iconName)
                                 .foregroundStyle(viewModel.paymentMethod.color)
@@ -162,17 +161,17 @@ struct AddBillView: View {
                 } header: {
                     Label("Payment Status", systemImage: "calendar.badge.clock")
                 }
-                
+
                 Section {
                     Toggle(isOn: $viewModel.isRecurring) {
                         HStack {
                             Image(systemName: "arrow.triangle.2.circlepath")
-                                .foregroundStyle(viewModel.isRecurring ? .blue : .secondary)
+                                .foregroundStyle(viewModel.isRecurring ? RMDesign.accent : .secondary)
                             Text("Recurring Bill")
                         }
                     }
                     .toggleStyle(.switch)
-                    
+
                     if viewModel.isRecurring {
                         HStack {
                             Image(systemName: "repeat")
@@ -185,67 +184,67 @@ struct AddBillView: View {
                                 }
                             }
                         }
-                        
-                        // 🆕 Pause toggle
+
+                        // Pause toggle
                         Toggle(isOn: $viewModel.isPaused) {
                             HStack {
                                 Image(systemName: viewModel.isPaused ? "pause.circle.fill" : "pause.circle")
-                                    .foregroundStyle(viewModel.isPaused ? .orange : .secondary)
+                                    .foregroundStyle(viewModel.isPaused ? RMDesign.warning : .secondary)
                                 Text("Pause future generation")
                             }
                         }
                         .toggleStyle(.switch)
-                        
+
                         if viewModel.isPaused {
                             HStack(alignment: .top, spacing: 6) {
                                 Image(systemName: "info.circle.fill")
                                     .font(.system(size: 10))
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(RMDesign.warning)
                                 Text("Paused bills are skipped by the Generate tool. History stays intact — unpause anytime to resume.")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             .padding(8)
-                            .background(Color.orange.opacity(0.08))
-                            .cornerRadius(6)
+                            .background(RMDesign.warning.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: RMDesign.fieldRadius))
                         }
                     }
                 } header: {
                     Label("Recurring", systemImage: "arrow.triangle.2.circlepath.circle")
                 }
-                
+
                 Section {
                     TextEditor(text: $viewModel.notes)
                         .frame(height: 70)
                         .font(.body)
                         .padding(4)
-                        .background(Color(NSColor.textBackgroundColor))
-                        .cornerRadius(6)
+                        .background(RMDesign.fieldBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: RMDesign.fieldRadius))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: RMDesign.fieldRadius)
+                                .stroke(RMDesign.borderColor, lineWidth: 1)
                         )
                 } header: {
                     Label("Notes", systemImage: "note.text")
                 }
-                
+
                 if let errorMessage = viewModel.validationErrorMessage {
                     Section {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(RMDesign.danger)
                             Text(errorMessage)
-                                .foregroundStyle(.red)
-                                .font(.caption)
+                                .foregroundStyle(RMDesign.danger)
+                                .font(.system(size: 12))
                         }
                     }
                 }
             }
             .formStyle(.grouped)
-            
-            Divider()
-            
+
+            Divider().opacity(0.5)
+
             // MARK: - Footer
             HStack {
                 Spacer()
@@ -263,8 +262,8 @@ struct AddBillView: View {
                 .disabled(!viewModel.isValid)
                 .keyboardShortcut(.defaultAction)
             }
-            .padding(20)
-            .background(Color(NSColor.windowBackgroundColor))
+            .padding(16)
+            .background(RMDesign.pageBackground)
         }
         .frame(minWidth: 600, idealWidth: 600, maxWidth: 700,
                minHeight: 700, idealHeight: 800, maxHeight: 950)

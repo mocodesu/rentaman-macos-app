@@ -207,8 +207,8 @@ struct MonthlyBudgetAdvisor {
 struct BudgetRecommendationCard: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appCurrency) private var currency: AppCurrency
-   @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+    private var allBills: [Bill]
     @Query private var properties: [Property]
 
     @State private var window: BudgetWindow = .twelve
@@ -246,7 +246,7 @@ private var allBills: [Bill]
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             header
             bufferPicker
             if let rec = recommendation {
@@ -261,12 +261,12 @@ private var allBills: [Bill]
                 emptyState
             }
         }
-        .padding(20)
+        .padding(16)
         .background(RMDesign.cardBackground)
-        .cornerRadius(RMDesign.cardRadius)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
             RoundedRectangle(cornerRadius: RMDesign.cardRadius)
-                .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
         .alert("Apply budget?", isPresented: $showApplyConfirm) {
             Button("Apply", role: .none) { applyBudget() }
@@ -284,17 +284,17 @@ private var allBills: [Bill]
 
     // MARK: - Header
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: "target")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(Color.green.gradient)
-                .cornerRadius(9)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(RMDesign.success)
+                .frame(width: 24, height: 24)
+                .background(RMDesign.success.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Recommended Monthly Budget")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                 Text("Based on your actual bill history, plus breathing room")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -309,7 +309,7 @@ private var allBills: [Bill]
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(width: 230)
+            .frame(width: 220)
         }
     }
 
@@ -318,13 +318,14 @@ private var allBills: [Bill]
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "lungs.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.teal)
                 Text("Breathing room")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 Text("+\(Int(bufferLevel.percent * 100))%")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
                     .foregroundStyle(.teal)
             }
 
@@ -342,10 +343,10 @@ private var allBills: [Bill]
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12)
-        .background(Color.teal.opacity(0.06))
-        .cornerRadius(10)
+        .background(Color.teal.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
                 .stroke(Color.teal.opacity(0.15), lineWidth: 1)
         )
     }
@@ -353,75 +354,67 @@ private var allBills: [Bill]
     // MARK: - Headline
     private func headlineNumber(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Big number
             Text(CurrencyFormatter.format(rec.recommended, as: currency))
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .font(.system(size: 32, weight: .semibold))
                 .foregroundStyle(.primary)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
 
-            // Breakdown of base + buffer
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 // Base
-                HStack(spacing: 5) {
-                    Circle().fill(Color.blue).frame(width: 6, height: 6)
+                HStack(spacing: 4) {
+                    Circle().fill(RMDesign.accent).frame(width: 6, height: 6)
                     Text("Base \(CurrencyFormatter.format(rec.median, as: currency))")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(RMDesign.accent)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(6)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(RMDesign.accent.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
 
                 Image(systemName: "plus")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 // Buffer
-                HStack(spacing: 5) {
-                    Circle().fill(Color.teal).frame(width: 6, height: 6)
+                HStack(spacing: 4) {
+                    Circle().fill(.teal).frame(width: 6, height: 6)
                     Text("Buffer \(CurrencyFormatter.format(rec.bufferAmount, as: currency))")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.teal)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.teal.opacity(0.1))
-                .cornerRadius(6)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.teal.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
 
                 Image(systemName: "equal")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 // Total
                 Text(CurrencyFormatter.format(rec.recommended, as: currency))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.12))
-                    .cornerRadius(6)
+                    .foregroundStyle(RMDesign.success)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(RMDesign.success.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
             }
 
-            // Explanation line
             Text(headlineExplanation(rec))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            LinearGradient(
-                colors: [Color.green.opacity(0.12), Color.mint.opacity(0.05)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-        )
-        .cornerRadius(12)
+        .padding(14)
+        .background(Color.green.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.green.opacity(0.2), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.success.opacity(0.15), lineWidth: 1)
         )
     }
 
@@ -439,13 +432,13 @@ private var allBills: [Bill]
 
     // MARK: - Stats Row
     private func statsRow(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             AdvisorStat(
                 title: "Typical",
                 value: CurrencyFormatter.format(rec.median, as: currency),
                 subtitle: "\(rec.activeMonths) active months",
                 icon: "chart.line.uptrend.xyaxis",
-                color: .blue
+                color: RMDesign.accent
             )
             AdvisorStat(
                 title: "Buffer",
@@ -459,14 +452,14 @@ private var allBills: [Bill]
                 value: rec.highest.map { CurrencyFormatter.format($0.total, as: currency) } ?? "—",
                 subtitle: rec.highest.map { shortMonth($0.date) } ?? "",
                 icon: "arrow.up.circle.fill",
-                color: .red
+                color: RMDesign.danger
             )
             AdvisorStat(
                 title: "Lowest",
                 value: rec.lowest.map { CurrencyFormatter.format($0.total, as: currency) } ?? "—",
                 subtitle: rec.lowest.map { shortMonth($0.date) } ?? "",
                 icon: "arrow.down.circle.fill",
-                color: .orange
+                color: RMDesign.warning
             )
         }
     }
@@ -479,8 +472,8 @@ private var allBills: [Bill]
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 HStack(spacing: 10) {
-                    legend(color: .green, label: "Recommended")
-                    legend(color: .blue,   label: "Base")
+                    legend(color: RMDesign.success, label: "Recommended")
+                    legend(color: RMDesign.accent,   label: "Base")
                 }
             }
 
@@ -489,24 +482,24 @@ private var allBills: [Bill]
                 RuleMark(
                     y: .value("Base", CurrencyFormatter.convert(rec.median, to: currency))
                 )
-                .foregroundStyle(Color.blue.opacity(0.7))
+                .foregroundStyle(RMDesign.accent.opacity(0.7))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 .annotation(position: .top, alignment: .leading) {
                     Text("Base")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(RMDesign.accent)
                 }
 
                 // Recommended line
                 RuleMark(
                     y: .value("Recommended", CurrencyFormatter.convert(rec.recommended, to: currency))
                 )
-                .foregroundStyle(Color.green)
+                .foregroundStyle(RMDesign.success)
                 .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                 .annotation(position: .top, alignment: .trailing) {
                     Text("Recommended")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(RMDesign.success)
                 }
 
                 ForEach(rec.monthlyTotals) { point in
@@ -517,17 +510,17 @@ private var allBills: [Bill]
                     )
                     .foregroundStyle(
                         point.total > rec.recommended
-                            ? Color.red.gradient
+                            ? RMDesign.danger
                             : point.total > rec.median
-                                ? Color.orange.gradient
-                                : Color.blue.gradient
+                                ? RMDesign.warning
+                                : RMDesign.accent
                     )
                     .cornerRadius(3)
                 }
             }
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 8)) { value in
-                    AxisGridLine().foregroundStyle(.gray.opacity(0.1))
+                    AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                     AxisValueLabel {
                         if let date = value.as(Date.self) {
                             Text(date.formatted(.dateTime.month(.abbreviated).year(.twoDigits)))
@@ -538,7 +531,7 @@ private var allBills: [Bill]
             }
             .chartYAxis {
                 AxisMarks { value in
-                    AxisGridLine().foregroundStyle(.gray.opacity(0.1))
+                    AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                     AxisValueLabel {
                         if let amount = value.as(Double.self), amount.isFinite {
                             Text(CurrencyFormatter.compact(
@@ -550,7 +543,7 @@ private var allBills: [Bill]
                     }
                 }
             }
-            .frame(height: 190)
+            .frame(height: 180)
 
             Text("Bars above the recommended line are months where you went over budget. Blue = under base, orange = between base and recommended, red = over recommended.")
                 .font(.system(size: 10))
@@ -566,8 +559,8 @@ private var allBills: [Bill]
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 HStack(spacing: 12) {
-                    legend(color: .blue, label: "Committed (recurring)")
-                    legend(color: .orange, label: "Variable")
+                    legend(color: RMDesign.accent, label: "Committed (recurring)")
+                    legend(color: RMDesign.warning, label: "Variable")
                 }
             }
 
@@ -575,11 +568,11 @@ private var allBills: [Bill]
                 ForEach(Array(rec.categoryBreakdown.prefix(8).enumerated()), id: \.element.id) { idx, item in
                     HStack(spacing: 10) {
                         Image(systemName: item.category.iconName)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(item.category.color)
                             .frame(width: 22, height: 22)
-                            .background(item.category.color.opacity(0.12))
-                            .cornerRadius(6)
+                            .background(item.category.color.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
 
                         Text(item.category.rawValue)
                             .font(.system(size: 12, weight: .medium))
@@ -588,11 +581,11 @@ private var allBills: [Bill]
                         if item.isRecurring {
                             Text("recurring")
                                 .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(RMDesign.accent)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(4)
+                                .background(RMDesign.accent.opacity(0.10))
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
                         }
 
                         Spacer()
@@ -603,28 +596,28 @@ private var allBills: [Bill]
                             .monospacedDigit()
 
                         Text(CurrencyFormatter.format(item.monthlyAverage, as: currency))
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold))
                             .monospacedDigit()
                             .frame(width: 130, alignment: .trailing)
                     }
-                    .padding(.vertical, 7)
-                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 8)
 
                     if idx < min(rec.categoryBreakdown.count, 8) - 1 {
-                        Divider().padding(.leading, 42)
+                        Divider().padding(.leading, 40)
                     }
                 }
             }
-            .background(Color(NSColor.textBackgroundColor).opacity(0.4))
-            .cornerRadius(10)
+            .background(RMDesign.fieldBackground.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
 
             HStack(spacing: 16) {
                 Text("Committed: \(CurrencyFormatter.format(rec.committedMonthly, as: currency))/mo")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(RMDesign.accent)
                 Text("Variable: \(CurrencyFormatter.format(rec.variableMonthly, as: currency))/mo")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(RMDesign.warning)
                 Spacer()
             }
             .padding(.top, 2)
@@ -648,7 +641,7 @@ private var allBills: [Bill]
             if didApply {
                 Label("Applied", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(RMDesign.success)
             } else {
                 Button {
                     showApplyConfirm = true
@@ -661,11 +654,11 @@ private var allBills: [Bill]
             }
         }
         .padding(12)
-        .background(Color.green.opacity(0.06))
-        .cornerRadius(10)
+        .background(Color.green.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.green.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.success.opacity(0.15), lineWidth: 1)
         )
     }
 
@@ -676,9 +669,9 @@ private var allBills: [Bill]
 
     // MARK: - Empty
     private var emptyState: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: "target")
-                .font(.system(size: 32, weight: .light))
+                .font(.system(size: 28, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("Not enough data yet")
                 .font(.system(size: 13, weight: .semibold))
@@ -724,18 +717,18 @@ private struct AdvisorStat: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(color)
                 Text(title.uppercased())
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.3)
             }
             Text(value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -746,7 +739,7 @@ private struct AdvisorStat: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color(NSColor.textBackgroundColor).opacity(0.4))
-        .cornerRadius(9)
+        .background(RMDesign.fieldBackground.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
     }
 }

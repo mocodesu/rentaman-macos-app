@@ -7,43 +7,43 @@ struct GeneralSettingsView: View {
     @AppStorage(PreferenceKey.startWeekOn) private var weekStartRaw: String = WeekStart.sunday.rawValue
     @AppStorage(PreferenceKey.showDecimals) private var showDecimals: Bool = true
     @AppStorage(PreferenceKey.enableAnimations) private var enableAnimations: Bool = true
-    
+
     private var appearance: AppAppearance {
         get { AppAppearance(rawValue: appearanceRaw) ?? .system }
         nonmutating set { appearanceRaw = newValue.rawValue }
     }
-    
+
     private var currency: AppCurrency {
         get { AppCurrency(rawValue: currencyRaw) ?? .ksh }
         nonmutating set { currencyRaw = newValue.rawValue }
     }
-    
+
     private var dateFormat: DateFormatStyle {
         get { DateFormatStyle(rawValue: dateFormatRaw) ?? .system }
         nonmutating set { dateFormatRaw = newValue.rawValue }
     }
-    
+
     private var weekStart: WeekStart {
         get { WeekStart(rawValue: weekStartRaw) ?? .sunday }
         nonmutating set { weekStartRaw = newValue.rawValue }
     }
-    
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
                     Text("General")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 22, weight: .semibold))
                     Text("Customize how RentaMan looks and behaves.")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
-                
+
                 // MARK: - Currency
                 SettingsSection(title: "Display Currency", subtitle: "All amounts are stored in KES and converted on display.") {
                     VStack(spacing: 0) {
-                        SettingsRow(icon: "dollarsign.circle.fill", iconColor: .green, title: "Currency") {
+                        SettingsRow(icon: "dollarsign.circle.fill", iconColor: RMDesign.success, title: "Currency") {
                             Picker("", selection: Binding(get: { currency }, set: { currency = $0 })) {
                                 ForEach(AppCurrency.allCases) { curr in
                                     Text("\(curr.symbol) \(curr.rawValue)").tag(curr)
@@ -53,43 +53,43 @@ struct GeneralSettingsView: View {
                             .pickerStyle(.segmented)
                             .frame(width: 200)
                         }
-                        
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
-                        
-                        SettingsRow(icon: "number.circle.fill", iconColor: .blue, title: "Show decimal places", subtitle: "Display amounts like 67,000.00 instead of 67,000") {
+
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
+
+                        SettingsRow(icon: "number.circle.fill", iconColor: RMDesign.accent, title: "Show decimal places", subtitle: "Display amounts like 67,000.00 instead of 67,000") {
                             Toggle("", isOn: $showDecimals)
                                 .toggleStyle(.switch)
                                 .labelsHidden()
                         }
-                        
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
-                        
-                        HStack {
+
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
+
+                        HStack(spacing: 10) {
                             Image(systemName: "equal.circle.fill")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Color.orange.gradient)
-                                .cornerRadius(7)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
+                                .frame(width: 22, height: 22)
+                                .background(RMDesign.warning)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+
+                            VStack(alignment: .leading, spacing: 1) {
                                 Text("Preview")
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(.system(size: 12.5, weight: .medium))
                                 Text("How amounts will appear")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                             }
-                            
+
                             Spacer()
-                            
+
                             Text(previewAmount)
-                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(.primary)
                         }
                         .padding(.vertical, 4)
                     }
                 }
-                
+
                 // MARK: - Appearance
                 SettingsSection(title: "Appearance", subtitle: "Choose your preferred look.") {
                     VStack(spacing: 0) {
@@ -102,9 +102,9 @@ struct GeneralSettingsView: View {
                             .labelsHidden()
                             .frame(width: 180)
                         }
-                        
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
-                        
+
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
+
                         SettingsRow(icon: "sparkles", iconColor: .pink, title: "Enable animations", subtitle: "Smooth transitions and micro-interactions") {
                             Toggle("", isOn: $enableAnimations)
                                 .toggleStyle(.switch)
@@ -112,11 +112,11 @@ struct GeneralSettingsView: View {
                         }
                     }
                 }
-                
+
                 // MARK: - Regional
                 SettingsSection(title: "Regional", subtitle: "Date and week preferences.") {
                     VStack(spacing: 0) {
-                        SettingsRow(icon: "calendar", iconColor: .red, title: "Date format") {
+                        SettingsRow(icon: "calendar", iconColor: RMDesign.danger, title: "Date format") {
                             Picker("", selection: Binding(get: { dateFormat }, set: { dateFormat = $0 })) {
                                 ForEach(DateFormatStyle.allCases) { fmt in
                                     Text(fmt.rawValue).tag(fmt)
@@ -125,9 +125,9 @@ struct GeneralSettingsView: View {
                             .labelsHidden()
                             .frame(width: 180)
                         }
-                        
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
-                        
+
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
+
                         SettingsRow(icon: "calendar.badge.clock", iconColor: .indigo, title: "Week starts on") {
                             Picker("", selection: Binding(get: { weekStart }, set: { weekStart = $0 })) {
                                 ForEach(WeekStart.allCases) { day in
@@ -146,7 +146,7 @@ struct GeneralSettingsView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
-    
+
     private var previewAmount: String {
         let amount: Double = 67000
         let converted = CurrencyFormatter.convert(amount, to: currency)

@@ -29,7 +29,7 @@ struct ContentView: View {
         AppCurrency(rawValue: currencyRaw) ?? .ksh
     }
 
-    private let headerHeight: CGFloat = 48
+    private let headerHeight: CGFloat = 38
 
     var body: some View {
         NavigationSplitView {
@@ -39,7 +39,7 @@ struct ContentView: View {
             detailContent
         }
         .frame(minWidth: 900, minHeight: 600)
-        .animation(.easeInOut(duration: 0.2), value: navigation.selectedTab)
+        .animation(.easeInOut(duration: 0.15), value: navigation.selectedTab)
         .sheet(isPresented: $isShowingAddPropertySheet) {
             AddPropertyView()
                 .environment(\.appCurrency, currentCurrency)
@@ -84,7 +84,7 @@ struct ContentView: View {
 
     // MARK: - Detail Header
     private var detailHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Spacer()
             RentaManSyncPill()
             RentaManCurrencyPicker()
@@ -92,7 +92,7 @@ struct ContentView: View {
                 isShowingAddBillSheet = true
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .frame(height: headerHeight)
         .frame(maxWidth: .infinity)
         .background {
@@ -100,7 +100,7 @@ struct ContentView: View {
         }
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.gray.opacity(0.18))
+                .fill(RMDesign.dividerColor)
                 .frame(height: 0.5)
         }
     }

@@ -6,37 +6,37 @@ struct ReportsView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
     @Environment(SyncService.self) private var syncService
     @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
+    private var allBills: [Bill]
     @Query private var properties: [Property]
-    
+
     @State private var selectedPropertyId: String? = nil
-    
+
     private var filteredBills: [Bill] {
         if let propId = selectedPropertyId {
             return allBills.filter { $0.property?.id == propId }
         }
         return allBills
     }
-    
+
     private var filteredProperties: [Property] {
         if let propId = selectedPropertyId {
             return properties.filter { $0.id == propId }
         }
         return properties
     }
-    
+
     private var analytics: ReportsAnalytics {
         ReportsAnalytics(bills: filteredBills, properties: filteredProperties)
     }
-    
+
     private let kpiColumns: [GridItem] = Array(
-        repeating: GridItem(.flexible(), spacing: 14),
+        repeating: GridItem(.flexible(), spacing: 12),
         count: 4
     )
-    
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 // MARK: - Header
                 HStack(alignment: .center) {
                     RMPageHeader(
@@ -44,59 +44,47 @@ private var allBills: [Bill]
                         title: "Reports & Analytics",
                         subtitle: "\(analytics.totalBillsThisYear) bill\(analytics.totalBillsThisYear == 1 ? "" : "s") this year"
                     )
-                    
+
                     Spacer()
-                    
+
                     liveFreshnessIndicator
-                    
+
                     PropertyFilterMenu(
                         properties: properties,
                         selection: $selectedPropertyId
                     )
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - KPI Cards
-                LazyVGrid(columns: kpiColumns, spacing: 14) {
+                LazyVGrid(columns: kpiColumns, spacing: 12) {
                     HeroKPICard(
                         title: "Total Spent",
                         value: CurrencyFormatter.format(analytics.totalSpentThisYear, as: currency),
                         subtitle: "This year",
                         icon: "banknote.fill",
-                        gradient: LinearGradient(
-                            colors: [Color(red: 0.28, green: 0.55, blue: 0.98),
-                                     Color(red: 0.45, green: 0.28, blue: 0.92)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        iconAccent: .blue
+                        gradient: LinearGradient(colors: [.blue, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        iconAccent: RMDesign.accent
                     )
-                    
+
                     HeroKPICard(
-                        title: "This Month",
-                        value: CurrencyFormatter.format(analytics.totalSpentThisMonth, as: currency),
-                        subtitle: analytics.thisMonthLabel,
+                        title: "Spent This Month",
+                        value: CurrencyFormatter.format(analytics.totalPaidThisMonth, as: currency),
+                        subtitle: analytics.thisMonthLabel(currency: currency),
                         icon: "calendar",
-                        gradient: LinearGradient(
-                            colors: [Color(red: 0.15, green: 0.75, blue: 0.55),
-                                     Color(red: 0.08, green: 0.65, blue: 0.42)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        iconAccent: .green
+                        gradient: LinearGradient(colors: [.green, .green], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        iconAccent: RMDesign.success
                     )
-                    
+
                     HeroKPICard(
                         title: "Monthly Average",
                         value: CurrencyFormatter.format(analytics.averageMonthlySpend, as: currency),
                         subtitle: "12-month average",
                         icon: "chart.line.uptrend.xyaxis",
-                        gradient: LinearGradient(
-                            colors: [Color(red: 0.62, green: 0.28, blue: 0.95),
-                                     Color(red: 0.85, green: 0.25, blue: 0.75)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
+                        gradient: LinearGradient(colors: [.purple, .purple], startPoint: .topLeading, endPoint: .bottomTrailing),
                         iconAccent: .purple
                     )
-                    
+
                     HeroKPICard(
                         title: "Over Budget",
                         value: "\(analytics.propertiesOverBudget.count)",
@@ -104,27 +92,23 @@ private var allBills: [Bill]
                             ? "All on track"
                             : analytics.propertiesOverBudget.joined(separator: ", "),
                         icon: "exclamationmark.triangle.fill",
-                        gradient: analytics.propertiesOverBudget.isEmpty
-                            ? LinearGradient(
-                                colors: [Color(red: 0.15, green: 0.75, blue: 0.55),
-                                         Color(red: 0.08, green: 0.65, blue: 0.42)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing)
-                            : LinearGradient(
-                                colors: [Color(red: 0.95, green: 0.35, blue: 0.35),
-                                         Color(red: 0.85, green: 0.15, blue: 0.35)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing),
-                        iconAccent: analytics.propertiesOverBudget.isEmpty ? .green : .red
+                        gradient: LinearGradient(
+                            colors: analytics.propertiesOverBudget.isEmpty ? [.green, .green] : [.red, .red],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ),
+                        iconAccent: analytics.propertiesOverBudget.isEmpty ? RMDesign.success : RMDesign.danger
                     )
                 }
                 .padding(.horizontal, 24)
-                
-                // 🆕 Recommended budget advisor
-BudgetRecommendationCard()
-    .padding(.horizontal, 24)
-    
-    // After the BudgetRecommendationCard line:
-CashFlowPlannerView()
-    .padding(.horizontal, 24)
+
+                // Recommended budget advisor
+                BudgetRecommendationCard()
+                    .padding(.horizontal, 24)
+
+                // Cash flow planner
+                CashFlowPlannerView()
+                    .padding(.horizontal, 24)
+
                 // MARK: - Payment Rate Strip
                 if analytics.totalBillsThisYear > 0 {
                     PaymentRateStrip(
@@ -134,12 +118,12 @@ CashFlowPlannerView()
                     )
                     .padding(.horizontal, 24)
                 }
-                
+
                 // MARK: - Monthly Trend
                 RMContentCard(
                     title: "Monthly Spending Trend",
                     icon: "chart.xyaxis.line",
-                    iconColor: .blue,
+                    iconColor: RMDesign.accent,
                     subtitle: "Last 12 months"
                 ) {
                     if analytics.monthlyTrend.allSatisfy({ $0.amount == 0 }) {
@@ -155,30 +139,30 @@ CashFlowPlannerView()
                             )
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: [.blue.opacity(0.25), .blue.opacity(0.02)],
+                                    colors: [RMDesign.accent.opacity(0.20), RMDesign.accent.opacity(0.02)],
                                     startPoint: .top, endPoint: .bottom
                                 )
                             )
                             .interpolationMethod(.monotone)
-                            
+
                             LineMark(
                                 x: .value("Month", point.date),
                                 y: .value("Amount", CurrencyFormatter.convert(point.amount, to: currency))
                             )
-                            .foregroundStyle(.blue)
-                            .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                            .foregroundStyle(RMDesign.accent)
+                            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                             .interpolationMethod(.monotone)
                         }
                         .chartXAxis {
                             AxisMarks(values: .stride(by: .month)) { _ in
-                                AxisGridLine().foregroundStyle(.gray.opacity(0.15))
+                                AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                                 AxisValueLabel(format: .dateTime.month(.abbreviated))
                                     .font(.system(size: 10))
                             }
                         }
                         .chartYAxis {
                             AxisMarks { value in
-                                AxisGridLine().foregroundStyle(.gray.opacity(0.15))
+                                AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                                 AxisValueLabel {
                                     if let amount = value.as(Double.self), amount.isFinite {
                                         Text(CurrencyFormatter.compact(
@@ -190,17 +174,17 @@ CashFlowPlannerView()
                                 }
                             }
                         }
-                        .frame(height: 260)
+                        .frame(height: 240)
                     }
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Category & Property Comparison
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
                     RMContentCard(
                         title: "Category Breakdown",
                         icon: "chart.bar.fill",
-                        iconColor: .orange,
+                        iconColor: RMDesign.warning,
                         subtitle: "Current year"
                     ) {
                         if analytics.categoryBreakdown.isEmpty {
@@ -214,18 +198,18 @@ CashFlowPlannerView()
                                     x: .value("Amount", CurrencyFormatter.convert(point.amount, to: currency)),
                                     y: .value("Category", point.category.rawValue)
                                 )
-                                .foregroundStyle(point.category.color.gradient)
-                                .cornerRadius(5)
+                                .foregroundStyle(point.category.color)
+                                .cornerRadius(4)
                             }
                             .chartXAxis(.hidden)
-                            .frame(height: 320)
+                            .frame(height: 300)
                         }
                     }
-                    
+
                     RMContentCard(
                         title: "Spending by Property",
                         icon: "house.fill",
-                        iconColor: .green,
+                        iconColor: RMDesign.success,
                         subtitle: "Current year"
                     ) {
                         if analytics.propertyComparison.isEmpty || analytics.propertyComparison.allSatisfy({ $0.amount == 0 }) {
@@ -239,15 +223,15 @@ CashFlowPlannerView()
                                     x: .value("Property", point.name),
                                     y: .value("Amount", CurrencyFormatter.convert(point.amount, to: currency))
                                 )
-                                .foregroundStyle(point.color.gradient)
-                                .cornerRadius(6)
+                                .foregroundStyle(point.color)
+                                .cornerRadius(5)
                             }
-                            .frame(height: 320)
+                            .frame(height: 300)
                         }
                     }
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Budget vs Actual
                 RMContentCard(
                     title: "Budget vs Actual",
@@ -267,31 +251,31 @@ CashFlowPlannerView()
                                     x: .value("Property", point.name),
                                     y: .value("Amount", CurrencyFormatter.convert(point.budget, to: currency))
                                 )
-                                .foregroundStyle(.gray.opacity(0.35))
+                                .foregroundStyle(Color.gray.opacity(0.3))
                                 .position(by: .value("Type", "Budget"))
-                                .cornerRadius(4)
+                                .cornerRadius(3)
                             }
                             ForEach(analytics.budgetVsActual) { point in
                                 BarMark(
                                     x: .value("Property", point.name),
                                     y: .value("Amount", CurrencyFormatter.convert(point.spent, to: currency))
                                 )
-                                .foregroundStyle(point.spent > point.budget ? Color.red.gradient : Color.green.gradient)
+                                .foregroundStyle(point.spent > point.budget ? RMDesign.danger : RMDesign.success)
                                 .position(by: .value("Type", "Spent"))
-                                .cornerRadius(4)
+                                .cornerRadius(3)
                             }
                         }
                         .chartLegend(position: .bottom, spacing: 16)
-                        .frame(height: 280)
+                        .frame(height: 260)
                     }
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Top 10 Expenses
                 RMContentCard(
                     title: "Top 10 Expenses",
                     icon: "flame.fill",
-                    iconColor: .orange,
+                    iconColor: RMDesign.warning,
                     subtitle: "Current year"
                 ) {
                     if analytics.topExpenses.isEmpty {
@@ -300,7 +284,7 @@ CashFlowPlannerView()
                             message: "No expenses recorded this year"
                         )
                     } else {
-                        VStack(spacing: 4) {
+                        VStack(spacing: 3) {
                             ForEach(Array(analytics.topExpenses.enumerated()), id: \.element.id) { index, bill in
                                 TopExpenseRow(
                                     rank: index + 1,
@@ -314,7 +298,7 @@ CashFlowPlannerView()
                 }
                 .padding(.horizontal, 24)
             }
-            .padding(.vertical, 24)
+            .padding(.vertical, 20)
         }
         .background(RMDesign.pageBackground)
         .task {
@@ -323,7 +307,7 @@ CashFlowPlannerView()
             }
         }
     }
-    
+
     // MARK: - Live Freshness Indicator
     private var liveFreshnessIndicator: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -331,31 +315,24 @@ CashFlowPlannerView()
                 Circle()
                     .fill(freshnessColor)
                     .frame(width: 6, height: 6)
-                
+
                 Text(freshnessText(at: context.date))
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(Color.gray.opacity(0.08))
-                    .overlay(Capsule().stroke(Color.gray.opacity(0.12), lineWidth: 0.75))
-            )
             .help("Reports update automatically as data syncs")
         }
     }
-    
+
     private var freshnessColor: Color {
-        guard let last = syncService.lastSyncAt else { return .gray }
+        guard let last = syncService.lastSyncAt else { return .secondary }
         let secondsAgo = Date().timeIntervalSince(last)
-        if secondsAgo < 60 { return .green }
-        if secondsAgo < 600 { return .orange }
-        return .red
+        if secondsAgo < 60 { return RMDesign.success }
+        if secondsAgo < 600 { return RMDesign.warning }
+        return RMDesign.danger
     }
-    
+
     private func freshnessText(at date: Date) -> String {
         guard let last = syncService.lastSyncAt else { return "Never synced" }
         let seconds = max(0, Int(date.timeIntervalSince(last)))
@@ -374,45 +351,46 @@ struct PaymentRateStrip: View {
     let paid: Int
     let unpaid: Int
     let rate: Double
-    
+
     var body: some View {
         HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("Payment Progress")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                 Text("\(paid) paid · \(unpaid) unpaid")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
-            
+
             Spacer()
-            
+
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color.red.opacity(0.2))
-                        .frame(height: 8)
-                    
+                        .fill(Color.gray.opacity(0.10))
+                        .frame(height: 6)
+
                     Capsule()
-                        .fill(Color.green.gradient)
-                        .frame(width: geo.size.width * rate, height: 8)
+                        .fill(RMDesign.success)
+                        .frame(width: geo.size.width * rate, height: 6)
                 }
             }
-            .frame(height: 8)
+            .frame(height: 6)
             .frame(maxWidth: 200)
-            
+
             Text("\(Int(rate * 100))%")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold))
                 .monospacedDigit()
-                .foregroundStyle(rate > 0.8 ? .green : rate > 0.5 ? .orange : .red)
+                .foregroundStyle(rate > 0.8 ? RMDesign.success : rate > 0.5 ? RMDesign.warning : RMDesign.danger)
                 .frame(width: 44, alignment: .trailing)
         }
-        .padding(16)
+        .padding(14)
         .background(RMDesign.cardBackground)
-        .cornerRadius(RMDesign.cardRadius)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
             RoundedRectangle(cornerRadius: RMDesign.cardRadius)
-                .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 }
@@ -423,49 +401,49 @@ struct TopExpenseRow: View {
     let bill: Bill
     let currency: AppCurrency
     let isLast: Bool
-    
+
     @State private var isHovered = false
-    
+
     private var rankColor: Color {
         switch rank {
         case 1: return .yellow
         case 2: return .gray
-        case 3: return .orange
+        case 3: return RMDesign.warning
         default: return .secondary
         }
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(rank <= 3 ? rankColor.opacity(0.15) : Color.gray.opacity(0.08))
-                        .frame(width: 30, height: 30)
+                        .fill(rank <= 3 ? rankColor.opacity(0.14) : Color.gray.opacity(0.06))
+                        .frame(width: 24, height: 24)
                     Text("\(rank)")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(rank <= 3 ? rankColor : .secondary)
                 }
-                
+
                 Image(systemName: bill.category.iconName)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(bill.category.color)
-                    .frame(width: 30, height: 30)
-                    .background(bill.category.color.opacity(0.12))
-                    .cornerRadius(8)
-                
-                VStack(alignment: .leading, spacing: 3) {
+                    .frame(width: 24, height: 24)
+                    .background(bill.category.color.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                VStack(alignment: .leading, spacing: 2) {
                     Text(bill.title)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12.5, weight: .medium))
                         .lineLimit(1)
-                    
-                    HStack(spacing: 6) {
+
+                    HStack(spacing: 5) {
                         if let prop = bill.property {
                             Text(prop.name)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
-                        Text("•")
+                        Text("·")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
                         Text(bill.category.rawValue)
@@ -473,30 +451,28 @@ struct TopExpenseRow: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Spacer()
-                
+
                 Text(bill.dueDate.formatted(date: .abbreviated, time: .omitted))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                
+
                 Text(CurrencyFormatter.format(bill.amount, as: currency))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .monospacedDigit()
                     .frame(width: 130, alignment: .trailing)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(isHovered ? Color.blue.opacity(0.04) : Color.clear)
-            .cornerRadius(8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isHovered ? Color.gray.opacity(0.04) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .onHover { hovering in
-                withAnimation(.easeOut(duration: 0.15)) {
-                    isHovered = hovering
-                }
+                withAnimation(RMDesign.ease) { isHovered = hovering }
             }
-            
+
             if !isLast {
-                Divider().padding(.leading, 54).opacity(0.6)
+                Divider().padding(.leading, 44).opacity(0.6)
             }
         }
     }

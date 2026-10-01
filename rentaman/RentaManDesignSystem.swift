@@ -2,18 +2,28 @@ import SwiftUI
 
 // MARK: - Extended Design System
 extension RMDesign {
-    // New radii
-    static let heroRadius: CGFloat = 20
-    static let pillRadius: CGFloat = 100
-    
-    // Shadows
-    static let cardShadow = Color.black.opacity(0.04)
-    static let hoverShadow = Color.black.opacity(0.08)
-    
-    // Backgrounds
-    static var cardBackground: Color { Color(NSColor.controlBackgroundColor) }
-    static var pageBackground: Color { Color(NSColor.windowBackgroundColor) }
+
+    // MARK: Surfaces
+    static var pageBackground: Color  { Color(NSColor.windowBackgroundColor) }
+    static var cardBackground: Color  { Color(NSColor.controlBackgroundColor) }
     static var fieldBackground: Color { Color(NSColor.textBackgroundColor) }
+
+    // MARK: Borders
+    static var borderColor: Color  { Color.gray.opacity(0.14) }
+    static var dividerColor: Color { Color.gray.opacity(0.10) }
+
+    // MARK: Accent
+    static var accent: Color     { .accentColor }
+    static var accentSoft: Color { Color.accentColor.opacity(0.10) }
+
+    // MARK: Semantics
+    static let success: Color = .green
+    static let warning: Color = .orange
+    static let danger:  Color = .red
+
+    // MARK: Shadows (kept for compat — used sparingly)
+    static let cardShadow:  Color = .black.opacity(0.04)
+    static let hoverShadow: Color = .black.opacity(0.08)
 }
 
 // MARK: - Section Header
@@ -23,14 +33,14 @@ struct RMSectionHeader: View {
     let title: String
     let subtitle: String?
     var trailing: AnyView? = nil
-    
+
     init(icon: String, iconColor: Color, title: String, subtitle: String? = nil) {
         self.icon = icon
         self.iconColor = iconColor
         self.title = title
         self.subtitle = subtitle
     }
-    
+
     init<T: View>(icon: String, iconColor: Color, title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> T) {
         self.icon = icon
         self.iconColor = iconColor
@@ -38,28 +48,27 @@ struct RMSectionHeader: View {
         self.subtitle = subtitle
         self.trailing = AnyView(trailing())
     }
-    
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(iconColor.gradient)
-                .cornerRadius(9)
-            
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(iconColor)
+                .frame(width: 16, alignment: .center)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
                 if let subtitle {
                     Text(subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
-            
-            Spacer()
-            
+
+            Spacer(minLength: 8)
+
             if let trailing {
                 trailing
             }
@@ -67,104 +76,94 @@ struct RMSectionHeader: View {
     }
 }
 
-// MARK: - Page Header (for top of each main view)
+// MARK: - Page Header (top of each main view)
 struct RMPageHeader: View {
     let icon: String
     let title: String
     let subtitle: String
-    
+
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(RMDesign.accentGradient)
-                    .frame(width: 48, height: 48)
-                    .shadow(color: Color.blue.opacity(0.25), radius: 8, y: 4)
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(RMDesign.accent)
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.primary)
                 Text(subtitle)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
-            
+
             Spacer()
         }
     }
 }
 
-// MARK: - Hero KPI Card (gradient)
+// MARK: - Hero KPI Card (flat metric card)
+//
+// The `gradient` parameter is retained for source compatibility but is
+// intentionally unused — the card derives all of its color from `iconAccent`.
 struct HeroKPICard: View {
     let title: String
     let value: String
     let subtitle: String
     let icon: String
-    let gradient: LinearGradient
+    let gradient: LinearGradient   // retained for API compat — unused
     let iconAccent: Color
-    
+
     @State private var isHovered = false
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(0.2))
-                    .cornerRadius(9)
-                
-                Spacer()
-                
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title.uppercased())
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .tracking(0.5)
-                
+        HStack(spacing: 0) {
+            // Left accent bar
+            Rectangle()
+                .fill(iconAccent)
+                .frame(width: 3)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(title.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 4)
+
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(iconAccent)
+                }
+
                 Text(value)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
-                
+
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 140)
-        .background(
-            ZStack {
-                gradient
-                
-                // Subtle inner glow
-                RadialGradient(
-                    colors: [Color.white.opacity(0.15), Color.clear],
-                    center: .topTrailing,
-                    startRadius: 10,
-                    endRadius: 150
-                )
-            }
+        .frame(height: 108)
+        .background(isHovered ? Color.gray.opacity(0.04) : RMDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
-        .cornerRadius(RMDesign.heroRadius)
-        .shadow(color: iconAccent.opacity(isHovered ? 0.35 : 0.2), radius: isHovered ? 16 : 10, y: 6)
-        .scaleEffect(isHovered ? 1.015 : 1.0)
         .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(RMDesign.ease) {
                 isHovered = hovering
             }
         }
@@ -177,29 +176,28 @@ struct StatPill: View {
     let label: String
     let value: String
     let color: Color
-    
+
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(color)
-                .frame(width: 22, height: 22)
-                .background(color.opacity(0.12))
-                .cornerRadius(6)
-            
+
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
-            
+
             Text(value)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .background(RMDesign.fieldBackground)
-        .cornerRadius(RMDesign.pillRadius)
+        .clipShape(Capsule())
         .overlay(
-            Capsule().stroke(Color.gray.opacity(0.12), lineWidth: 1)
+            Capsule().stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 }
@@ -211,34 +209,30 @@ struct RMEmptyState: View {
     let message: String
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
-    
+
     var body: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.08))
-                    .frame(width: 72, height: 72)
-                Image(systemName: icon)
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundStyle(.blue)
-            }
-            
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(.tertiary)
+
             VStack(spacing: 4) {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
                 Text(message)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 300)
+                    .frame(maxWidth: 320)
             }
-            
+
             if let actionTitle, let action {
                 Button(action: action) {
                     Text(actionTitle)
-                        .font(.system(size: 13, weight: .medium))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .font(.system(size: 12, weight: .medium))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
@@ -256,17 +250,23 @@ struct RMContentCard<Content: View>: View {
     let iconColor: Color
     let subtitle: String?
     @ViewBuilder let content: Content
-    
-    init(title: String? = nil, icon: String? = nil, iconColor: Color = .blue, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
+
+    init(
+        title: String? = nil,
+        icon: String? = nil,
+        iconColor: Color = .blue,
+        subtitle: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
         self.title = title
         self.icon = icon
         self.iconColor = iconColor
         self.subtitle = subtitle
         self.content = content()
     }
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             if let title, let icon {
                 RMSectionHeader(
                     icon: icon,
@@ -275,16 +275,16 @@ struct RMContentCard<Content: View>: View {
                     subtitle: subtitle
                 )
             }
-            
+
             content
         }
-        .padding(20)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RMDesign.cardBackground)
-        .cornerRadius(RMDesign.cardRadius)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
             RoundedRectangle(cornerRadius: RMDesign.cardRadius)
-                .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 }

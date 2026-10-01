@@ -31,23 +31,23 @@ struct ProfileView: View {
     @Environment(AuthService.self) private var auth
     @Environment(SyncService.self) private var syncService
     @Environment(\.appCurrency) private var currency: AppCurrency
-    
+
     @Query private var properties: [Property]
     @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
-    
+    private var allBills: [Bill]
+
     private var displayName: String {
         if case .signedIn(_, let name) = auth.state, let name = name, !name.isEmpty {
             return name
         }
         return "RentaMan User"
     }
-    
+
     private var email: String {
         if case .signedIn(let email, _) = auth.state { return email }
         return "—"
     }
-    
+
     private var initials: String {
         if case .signedIn(let email, let name) = auth.state {
             if let name = name, !name.isEmpty {
@@ -57,7 +57,7 @@ private var allBills: [Bill]
         }
         return "?"
     }
-    
+
     private var paidThisMonth: Double {
         let calendar = Calendar.current
         let now = Date()
@@ -69,49 +69,48 @@ private var allBills: [Bill]
             }
             .reduce(0.0) { $0 + $1.amount }
     }
-    
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 // MARK: - Hero
-                VStack(spacing: 16) {
+                VStack(spacing: 12) {
                     ZStack {
                         Circle()
-                            .fill(RMDesign.accentGradient)
-                            .frame(width: 96, height: 96)
-                            .shadow(color: Color.blue.opacity(0.35), radius: 16, y: 6)
+                            .fill(RMDesign.accentSoft)
+                            .frame(width: 80, height: 80)
                         Text(initials)
-                            .font(.system(size: 38, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                            .font(.system(size: 32, weight: .semibold, design: .rounded))
+                            .foregroundStyle(RMDesign.accent)
                     }
-                    
-                    VStack(spacing: 4) {
+
+                    VStack(spacing: 3) {
                         Text(displayName)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .font(.system(size: 18, weight: .semibold))
                         Text(email)
-                            .font(.system(size: 13))
+                            .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 12)
-                
+
                 // MARK: - Stats
-                HStack(spacing: 12) {
-                    ProfileStatCard(icon: "house.fill", iconColor: .blue, value: "\(properties.count)", label: "Properties")
+                HStack(spacing: 10) {
+                    ProfileStatCard(icon: "house.fill", iconColor: RMDesign.accent, value: "\(properties.count)", label: "Properties")
                     ProfileStatCard(icon: "doc.text.fill", iconColor: .purple, value: "\(allBills.count)", label: "Total Bills")
-                    ProfileStatCard(icon: "checkmark.circle.fill", iconColor: .green, value: "\(allBills.filter { $0.isPaid }.count)", label: "Paid")
-                    ProfileStatCard(icon: "banknote.fill", iconColor: .orange, value: CurrencyFormatter.format(paidThisMonth, as: currency), label: "Paid this month")
+                    ProfileStatCard(icon: "checkmark.circle.fill", iconColor: RMDesign.success, value: "\(allBills.filter { $0.isPaid }.count)", label: "Paid")
+                    ProfileStatCard(icon: "banknote.fill", iconColor: RMDesign.warning, value: CurrencyFormatter.format(paidThisMonth, as: currency), label: "Paid this month")
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Account
-                ProfileSection(title: "Account", icon: "person.crop.circle.fill", iconColor: .blue) {
+                ProfileSection(title: "Account", icon: "person.crop.circle.fill", iconColor: RMDesign.accent) {
                     VStack(spacing: 0) {
                         ProfileRow(icon: "envelope.fill", label: "Email", value: email)
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
                         ProfileRow(icon: "person.fill", label: "Name", value: displayName)
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
                         ProfileRow(
                             icon: "key.fill",
                             label: "API Key",
@@ -120,41 +119,41 @@ private var allBills: [Bill]
                     }
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Sync Status
-                ProfileSection(title: "Sync", icon: "icloud.fill", iconColor: .green) {
+                ProfileSection(title: "Sync", icon: "icloud.fill", iconColor: RMDesign.success) {
                     VStack(spacing: 0) {
                         ProfileRow(
                             icon: syncService.state.icon,
                             label: "Status",
                             value: syncService.state.label,
-                            valueColor: syncService.state.isError ? .red : .green
+                            valueColor: syncService.state.isError ? RMDesign.danger : RMDesign.success
                         )
-                        
+
                         if let last = syncService.lastSyncAt {
-                            Divider().padding(.leading, 40).padding(.vertical, 4)
+                            Divider().padding(.leading, 36).padding(.vertical, 4)
                             ProfileRow(
                                 icon: "clock.fill",
                                 label: "Last sync",
                                 value: last.formatted(date: .abbreviated, time: .shortened)
                             )
                         }
-                        
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
-                        
-                        HStack {
+
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
+
+                        HStack(spacing: 10) {
                             Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Color.green.gradient)
-                                .cornerRadius(7)
-                            
+                                .frame(width: 22, height: 22)
+                                .background(RMDesign.success)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+
                             Text("Force sync now")
-                                .font(.system(size: 13, weight: .medium))
-                            
+                                .font(.system(size: 12.5, weight: .medium))
+
                             Spacer()
-                            
+
                             Button {
                                 Task { await syncService.forceSync() }
                             } label: {
@@ -168,7 +167,7 @@ private var allBills: [Bill]
                     }
                 }
                 .padding(.horizontal, 24)
-                
+
                 // MARK: - Sign Out
                 Button {
                     auth.signOut()
@@ -178,10 +177,10 @@ private var allBills: [Bill]
                         Text("Sign Out").fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 10)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .tint(RMDesign.danger)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
@@ -198,40 +197,40 @@ private struct ProfileStatCard: View {
     let iconColor: Color
     let value: String
     let label: String
-    
+
     @State private var isHovered = false
-    
+
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(iconColor)
-                .frame(width: 34, height: 34)
-                .background(iconColor.opacity(0.12))
-                .cornerRadius(10)
-            
-            VStack(spacing: 2) {
+                .frame(width: 30, height: 30)
+                .background(iconColor.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(spacing: 1) {
                 Text(value)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
+                    .monospacedDigit()
                 Text(label)
-                    .font(.system(size: 10.5, weight: .medium))
+                    .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(RMDesign.cardBackground)
-        .cornerRadius(12)
+        .padding(.vertical, 14)
+        .background(isHovered ? Color.gray.opacity(0.04) : RMDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
-        .scaleEffect(isHovered ? 1.01 : 1.0)
         .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) { isHovered = hovering }
+            withAnimation(RMDesign.ease) { isHovered = hovering }
         }
     }
 }
@@ -242,28 +241,24 @@ private struct ProfileSection<Content: View>: View {
     let icon: String
     let iconColor: Color
     @ViewBuilder let content: Content
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(iconColor.gradient)
-                    .cornerRadius(7)
-                
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(iconColor)
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
             }
-            
+
             content
-                .padding(16)
+                .padding(14)
                 .background(RMDesign.cardBackground)
-                .cornerRadius(12)
+                .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                        .stroke(RMDesign.borderColor, lineWidth: 1)
                 )
         }
     }
@@ -275,19 +270,19 @@ private struct ProfileRow: View {
     let label: String
     let value: String
     var valueColor: Color = .primary
-    
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 20)
-            
+                .frame(width: 18)
+
             Text(label)
-                .font(.system(size: 13, weight: .medium))
-            
+                .font(.system(size: 12.5, weight: .medium))
+
             Spacer()
-            
+
             Text(value)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(valueColor)

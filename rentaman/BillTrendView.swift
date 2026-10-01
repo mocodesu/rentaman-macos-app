@@ -126,8 +126,8 @@ struct TrendAnalytics {
 struct BillTrendView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appCurrency) private var currency: AppCurrency
-   @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
+    @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
+    private var allBills: [Bill]
 
     @State private var scope: TrendScope
     @State private var granularity: TrendGranularity = .month
@@ -199,9 +199,9 @@ private var allBills: [Bill]
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Divider().opacity(0.5)
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     filterBar
                     if points.isEmpty || totalCount == 0 {
                         emptyState
@@ -215,18 +215,20 @@ private var allBills: [Bill]
             }
         }
         .frame(minWidth: 820, idealWidth: 920, minHeight: 640, idealHeight: 780)
+        .background(RMDesign.pageBackground)
     }
 
     // MARK: - Header
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "chart.xyaxis.line")
-                .font(.title2)
-                .foregroundStyle(.blue)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(RMDesign.accent)
+                .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Bill Trend")
-                    .font(.title2).fontWeight(.bold)
+                    .font(.system(size: 18, weight: .semibold))
                 Text(headerSubtitle)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -236,14 +238,14 @@ private var allBills: [Bill]
 
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
+                    .font(.system(size: 18))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
         }
         .padding(20)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(RMDesign.pageBackground)
     }
 
     private var headerSubtitle: String {
@@ -256,7 +258,7 @@ private var allBills: [Bill]
 
     // MARK: - Filter Bar
     private var filterBar: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Text("View")
@@ -272,7 +274,7 @@ private var allBills: [Bill]
                     .frame(width: 280)
                 }
 
-                Divider().frame(height: 22)
+                Divider().frame(height: 20)
 
                 HStack(spacing: 6) {
                     Text("Group by")
@@ -312,7 +314,7 @@ private var allBills: [Bill]
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 11))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(RMDesign.accent)
                         Picker("", selection: $selectedBillTitle) {
                             Text("Select a bill…").tag(String?.none)
                             ForEach(availableBillTitles, id: \.self) { title in
@@ -328,7 +330,7 @@ private var allBills: [Bill]
                     HStack(spacing: 6) {
                         Image(systemName: "tag")
                             .font(.system(size: 11))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(RMDesign.warning)
                         Picker("", selection: $selectedCategory) {
                             Text("Select a category…").tag(ExpenseCategory?.none)
                             ForEach(availableCategories) { c in
@@ -352,7 +354,7 @@ private var allBills: [Bill]
                 }
                 .toggleStyle(.checkbox)
 
-                Divider().frame(height: 22)
+                Divider().frame(height: 20)
 
                 Picker("", selection: $chartStyle) {
                     ForEach(ChartStyle.allCases) { s in
@@ -364,29 +366,29 @@ private var allBills: [Bill]
                 .frame(width: 80)
             }
         }
-        .padding(14)
+        .padding(12)
         .background(RMDesign.cardBackground)
-        .cornerRadius(12)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 
     // MARK: - KPI Row
     private var kpiRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             TrendKPI(
                 title: "Total",
                 value: CurrencyFormatter.format(totalAmount, as: currency),
                 icon: "banknote.fill",
-                color: .blue
+                color: RMDesign.accent
             )
             TrendKPI(
                 title: "Average",
                 value: CurrencyFormatter.format(averageAmount, as: currency),
                 icon: "chart.line.uptrend.xyaxis",
-                color: .green
+                color: RMDesign.success
             )
             TrendKPI(
                 title: "Entries",
@@ -399,7 +401,7 @@ private var allBills: [Bill]
                 value: peakPoint.map { CurrencyFormatter.format($0.amount, as: currency) } ?? "—",
                 subtitle: peakPoint.map { dateLabel($0.date) } ?? "",
                 icon: "arrow.up.circle.fill",
-                color: .orange
+                color: RMDesign.warning
             )
         }
     }
@@ -407,17 +409,14 @@ private var allBills: [Bill]
     // MARK: - Chart Card
     private var chartCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "chart.xyaxis.line")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(Color.blue.gradient)
-                    .cornerRadius(7)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(RMDesign.accent)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("Amount over time")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                     Text("Grouped by \(granularity.rawValue.lowercased())")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -427,14 +426,14 @@ private var allBills: [Bill]
             }
 
             chart
-                .frame(height: 300)
+                .frame(height: 280)
         }
-        .padding(16)
+        .padding(14)
         .background(RMDesign.cardBackground)
-        .cornerRadius(12)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 
@@ -451,7 +450,7 @@ private var allBills: [Bill]
                     )
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [.blue.opacity(0.25), .blue.opacity(0.02)],
+                            colors: [RMDesign.accent.opacity(0.20), RMDesign.accent.opacity(0.02)],
                             startPoint: .top, endPoint: .bottom
                         )
                     )
@@ -461,8 +460,8 @@ private var allBills: [Bill]
                         x: .value("Date", point.date),
                         y: .value("Amount", yValue)
                     )
-                    .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .foregroundStyle(RMDesign.accent)
+                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                     .interpolationMethod(.monotone)
 
                     if point.amount > 0 {
@@ -470,8 +469,8 @@ private var allBills: [Bill]
                             x: .value("Date", point.date),
                             y: .value("Amount", yValue)
                         )
-                        .foregroundStyle(.blue)
-                        .symbolSize(40)
+                        .foregroundStyle(RMDesign.accent)
+                        .symbolSize(30)
                     }
                 } else {
                     BarMark(
@@ -479,14 +478,14 @@ private var allBills: [Bill]
                         y: .value("Amount", yValue),
                         width: barWidth
                     )
-                    .foregroundStyle(Color.blue.gradient)
-                    .cornerRadius(4)
+                    .foregroundStyle(RMDesign.accent)
+                    .cornerRadius(3)
                 }
             }
         }
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 8)) { value in
-                AxisGridLine().foregroundStyle(.gray.opacity(0.15))
+                AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                 AxisValueLabel {
                     if let date = value.as(Date.self) {
                         Text(axisDateLabel(date)).font(.system(size: 10))
@@ -496,7 +495,7 @@ private var allBills: [Bill]
         }
         .chartYAxis {
             AxisMarks { value in
-                AxisGridLine().foregroundStyle(.gray.opacity(0.15))
+                AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                 AxisValueLabel {
                     if let amount = value.as(Double.self), amount.isFinite {
                         Text(CurrencyFormatter.compact(
@@ -523,14 +522,11 @@ private var allBills: [Bill]
     private var dataList: some View {
         let activePoints = points.filter { $0.count > 0 }.reversed()
 
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: "list.bullet.rectangle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 24, height: 24)
-                    .background(Color.purple.gradient)
-                    .cornerRadius(6)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.purple)
                 Text("Breakdown")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
@@ -554,45 +550,45 @@ private var allBills: [Bill]
                         GeometryReader { geo in
                             let maxAmount = points.map { $0.amount }.max() ?? 1
                             let fraction = maxAmount > 0 ? point.amount / maxAmount : 0
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.blue.opacity(0.6))
-                                .frame(width: max(2, geo.size.width * fraction), height: 6)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(RMDesign.accent.opacity(0.5))
+                                .frame(width: max(2, geo.size.width * fraction), height: 5)
                                 .frame(maxHeight: .infinity, alignment: .center)
                         }
-                        .frame(height: 16)
+                        .frame(height: 14)
 
                         Text(CurrencyFormatter.format(point.amount, as: currency))
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold))
                             .monospacedDigit()
                             .frame(width: 130, alignment: .trailing)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
 
-                    Divider().padding(.leading, 12)
+                    Divider().padding(.leading, 10)
                 }
             }
-            .background(Color(NSColor.textBackgroundColor).opacity(0.4))
-            .cornerRadius(10)
+            .background(RMDesign.fieldBackground.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         }
-        .padding(16)
+        .padding(14)
         .background(RMDesign.cardBackground)
-        .cornerRadius(12)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 
     // MARK: - Empty State
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Image(systemName: "chart.xyaxis.line")
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.tertiary)
             VStack(spacing: 4) {
                 Text("No trend data")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                 Text(emptyStateMessage)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -644,22 +640,23 @@ private struct TrendKPI: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(color)
-                    .frame(width: 22, height: 22)
-                    .background(color.opacity(0.12))
-                    .cornerRadius(6)
+                    .frame(width: 20, height: 20)
+                    .background(color.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
                 Text(title.uppercased())
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.4)
             }
 
             Text(value)
-                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .font(.system(size: 15, weight: .semibold))
+                .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
 
@@ -673,10 +670,10 @@ private struct TrendKPI: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(RMDesign.cardBackground)
-        .cornerRadius(10)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 }

@@ -5,35 +5,34 @@ struct AddPropertyView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var allProperties: [Property]
-    
+
     @State private var viewModel = AddPropertyViewModel()
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
+            HStack(spacing: 10) {
                 Image(systemName: "house.badge.plus")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(RMDesign.accent)
                 Text("Add New Property")
-                    .font(.title2)
-                    .fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Button {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
+                        .font(.system(size: 16))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
             }
-            .padding(20)
-            .background(Color(NSColor.windowBackgroundColor))
-            
-            Divider()
-            
+            .padding(16)
+            .background(RMDesign.pageBackground)
+
+            Divider().opacity(0.5)
+
             // Form
             Form {
                 Section {
@@ -43,14 +42,14 @@ struct AddPropertyView: View {
                             .frame(width: 20)
                         TextField("Name (e.g., Main House, Rental A)", text: $viewModel.name)
                     }
-                    
+
                     HStack {
                         Image(systemName: "mappin.and.ellipse")
                             .foregroundStyle(.secondary)
                             .frame(width: 20)
                         TextField("Address (Optional)", text: $viewModel.address)
                     }
-                    
+
                     HStack {
                         Image(systemName: "banknote")
                             .foregroundStyle(.secondary)
@@ -65,7 +64,7 @@ struct AddPropertyView: View {
                                 if filtered != newValue { viewModel.monthlyBudgetString = filtered }
                             }
                     }
-                    
+
                     HStack {
                         Image(systemName: "paintpalette")
                             .foregroundStyle(.secondary)
@@ -78,7 +77,7 @@ struct AddPropertyView: View {
                 } header: {
                     Text("Property Details")
                 }
-                
+
                 Section {
                     Toggle(isOn: $viewModel.isDefault) {
                         HStack {
@@ -88,30 +87,30 @@ struct AddPropertyView: View {
                         }
                     }
                     .toggleStyle(.switch)
-                    
+
                     Text("The default property will be pre-selected when adding new bills.")
-                        .font(.caption)
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 } header: {
                     Text("Default Selection")
                 }
-                
+
                 if let errorMessage = viewModel.validationErrorMessage {
                     Section {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(RMDesign.danger)
                             Text(errorMessage)
-                                .foregroundStyle(.red)
-                                .font(.caption)
+                                .foregroundStyle(RMDesign.danger)
+                                .font(.system(size: 12))
                         }
                     }
                 }
             }
             .formStyle(.grouped)
-            
-            Divider()
-            
+
+            Divider().opacity(0.5)
+
             // Footer
             HStack {
                 Spacer()
@@ -128,8 +127,8 @@ struct AddPropertyView: View {
                 .disabled(!viewModel.isValid)
                 .keyboardShortcut(.defaultAction)
             }
-            .padding(20)
-            .background(Color(NSColor.windowBackgroundColor))
+            .padding(16)
+            .background(RMDesign.pageBackground)
         }
         .frame(width: 540, height: 580)
         .onDisappear { viewModel.reset() }

@@ -25,24 +25,24 @@ struct DataSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Data")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 22, weight: .semibold))
                     Text("Manage your local data and backups.")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
 
                 SettingsSection(title: "Database", subtitle: "Summary of stored records on this device.") {
                     HStack(spacing: 0) {
-                        StatBlock(icon: "house.fill", color: .blue, value: "\(properties.count)", label: "Properties")
-                        Divider().frame(height: 50)
-                        StatBlock(icon: "doc.text.fill", color: .green, value: "\(bills.count)", label: "Bills")
-                        Divider().frame(height: 50)
-                        StatBlock(icon: "banknote.fill", color: .orange, value: "\(bills.filter { $0.isPaid }.count)", label: "Paid")
-                        Divider().frame(height: 50)
-                        StatBlock(icon: "clock.fill", color: .red, value: "\(bills.filter { !$0.isPaid }.count)", label: "Unpaid")
+                        StatBlock(icon: "house.fill", color: RMDesign.accent, value: "\(properties.count)", label: "Properties")
+                        Divider().frame(height: 46)
+                        StatBlock(icon: "doc.text.fill", color: RMDesign.success, value: "\(bills.count)", label: "Bills")
+                        Divider().frame(height: 46)
+                        StatBlock(icon: "banknote.fill", color: RMDesign.warning, value: "\(bills.filter { $0.isPaid }.count)", label: "Paid")
+                        Divider().frame(height: 46)
+                        StatBlock(icon: "clock.fill", color: RMDesign.danger, value: "\(bills.filter { !$0.isPaid }.count)", label: "Unpaid")
                     }
                 }
 
@@ -52,7 +52,7 @@ struct DataSettingsView: View {
                 ) {
                     SettingsRow(
                         icon: "trash.fill",
-                        iconColor: .red,
+                        iconColor: RMDesign.danger,
                         title: "Trash",
                         subtitle: trashedBills.isEmpty
                             ? "Empty"
@@ -68,14 +68,13 @@ struct DataSettingsView: View {
                     }
                 }
 
-                // 🆕 Audit Log
                 SettingsSection(
                     title: "Audit Log",
                     subtitle: "A complete, timestamped history of every change you've made."
                 ) {
                     SettingsRow(
                         icon: "clock.arrow.circlepath",
-                        iconColor: .blue,
+                        iconColor: RMDesign.accent,
                         title: "Activity history",
                         subtitle: auditEntries.isEmpty
                             ? "No activity yet"
@@ -95,7 +94,7 @@ struct DataSettingsView: View {
                     VStack(spacing: 12) {
                         SettingsRow(
                             icon: "square.and.arrow.up.fill",
-                            iconColor: .blue,
+                            iconColor: RMDesign.accent,
                             title: "Export Data",
                             subtitle: "Save a JSON file with all properties and bills (excludes trash)."
                         ) {
@@ -103,11 +102,11 @@ struct DataSettingsView: View {
                                 .buttonStyle(.bordered)
                         }
 
-                        Divider().padding(.leading, 40).padding(.vertical, 4)
+                        Divider().padding(.leading, 36).padding(.vertical, 4)
 
                         SettingsRow(
                             icon: "square.and.arrow.down.fill",
-                            iconColor: .green,
+                            iconColor: RMDesign.success,
                             title: "Import Data",
                             subtitle: "Restore from a previously exported JSON file."
                         ) {
@@ -122,19 +121,19 @@ struct DataSettingsView: View {
                 SettingsSection(title: "Reset", subtitle: "Erase data on this device. Data synced to the cloud is not affected.") {
                     SettingsRow(
                         icon: "trash.fill",
-                        iconColor: .red,
+                        iconColor: RMDesign.danger,
                         title: "Reset All Local Data",
                         subtitle: "Permanently remove all properties and bills from this Mac."
                     ) {
                         Button("Reset…") { isShowingResetConfirm = true }
                             .buttonStyle(.borderedProminent)
-                            .tint(.red)
+                            .tint(RMDesign.danger)
                     }
                 }
 
                 if case .success(let url) = exportStatus {
                     HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(RMDesign.success)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Export successful").font(.system(size: 12, weight: .semibold))
                             Text(url.path)
@@ -150,17 +149,17 @@ struct DataSettingsView: View {
                         .buttonStyle(.borderless)
                     }
                     .padding(12)
-                    .background(Color.green.opacity(0.08))
-                    .cornerRadius(10)
+                    .background(RMDesign.success.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
                 } else if case .failure(let msg) = exportStatus {
                     HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(RMDesign.danger)
                         Text(msg).font(.system(size: 12))
                         Spacer()
                     }
                     .padding(12)
-                    .background(Color.red.opacity(0.08))
-                    .cornerRadius(10)
+                    .background(RMDesign.danger.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
                 }
             }
             .padding(28)
@@ -221,7 +220,7 @@ struct DataSettingsView: View {
     }
 }
 
-// MARK: - Stat Block (unchanged)
+// MARK: - Stat Block
 struct StatBlock: View {
     let icon: String
     let color: Color
@@ -231,10 +230,11 @@ struct StatBlock: View {
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(color)
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .semibold))
+                .monospacedDigit()
             Text(label)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -243,7 +243,7 @@ struct StatBlock: View {
     }
 }
 
-// MARK: - Export Model (unchanged)
+// MARK: - Export Model
 struct RentaManExport: Codable {
     let version: String
     let exportedAt: Date

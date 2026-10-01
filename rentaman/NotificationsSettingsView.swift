@@ -13,7 +13,7 @@ struct NotificationsSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 header
                 permissionCard
                 remindersSection
@@ -38,9 +38,9 @@ struct NotificationsSettingsView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Notifications")
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: 22, weight: .semibold))
             Text("Choose when RentaMan should remind you about bills.")
-                .font(.system(size: 13))
+                .font(.system(size: 12))
                 .foregroundStyle(.secondary)
         }
     }
@@ -49,31 +49,32 @@ struct NotificationsSettingsView: View {
     private var permissionCard: some View {
         HStack(spacing: 12) {
             Image(systemName: permissionIcon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(permissionColor.gradient)
-                .cornerRadius(10)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(permissionColor)
+                .frame(width: 34, height: 34)
+                .background(permissionColor.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Permission")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                 Text(permissionMessage)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
 
             permissionAction
         }
-        .padding(14)
-        .background(permissionColor.opacity(0.08))
-        .cornerRadius(12)
+        .padding(12)
+        .background(permissionColor.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(permissionColor.opacity(0.25), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(permissionColor.opacity(0.20), lineWidth: 1)
         )
     }
 
@@ -104,7 +105,7 @@ struct NotificationsSettingsView: View {
         default:
             Label("OK", systemImage: "checkmark.circle.fill")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(RMDesign.success)
         }
     }
 
@@ -119,10 +120,10 @@ struct NotificationsSettingsView: View {
 
     private var permissionColor: Color {
         switch service.authorizationStatus {
-        case .authorized, .provisional, .ephemeral: return .green
-        case .denied: return .red
-        case .notDetermined: return .orange
-        @unknown default: return .gray
+        case .authorized, .provisional, .ephemeral: return RMDesign.success
+        case .denied: return RMDesign.danger
+        case .notDetermined: return RMDesign.warning
+        @unknown default: return .secondary
         }
     }
 
@@ -154,7 +155,7 @@ struct NotificationsSettingsView: View {
             VStack(spacing: 0) {
                 SettingsRow(
                     icon: "clock.badge.exclamationmark.fill",
-                    iconColor: .orange,
+                    iconColor: RMDesign.warning,
                     title: "Remind me before due date",
                     subtitle: "Get notified \(dueSoonDays) day\(dueSoonDays == 1 ? "" : "s") before a bill is due, at 9:00 AM."
                 ) {
@@ -163,11 +164,11 @@ struct NotificationsSettingsView: View {
                         .disabled(!service.isEnabled)
                 }
 
-                Divider().padding(.leading, 40).padding(.vertical, 4)
+                Divider().padding(.leading, 36).padding(.vertical, 4)
 
                 SettingsRow(
                     icon: "bell.badge.fill",
-                    iconColor: .red,
+                    iconColor: RMDesign.danger,
                     title: "Notify on due day",
                     subtitle: "Alert at 9:00 AM on the day a bill is due."
                 ) {
@@ -177,11 +178,11 @@ struct NotificationsSettingsView: View {
                         .disabled(!service.isEnabled)
                 }
 
-                Divider().padding(.leading, 40).padding(.vertical, 4)
+                Divider().padding(.leading, 36).padding(.vertical, 4)
 
                 SettingsRow(
                     icon: "envelope.badge.fill",
-                    iconColor: .blue,
+                    iconColor: RMDesign.accent,
                     title: "Weekly summary",
                     subtitle: "A digest every Sunday at 9:00 AM with last week's spending."
                 ) {
@@ -199,15 +200,15 @@ struct NotificationsSettingsView: View {
     private var scheduledCard: some View {
         HStack(spacing: 12) {
             Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(Color.blue.gradient)
-                .cornerRadius(9)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(RMDesign.accent)
+                .frame(width: 28, height: 28)
+                .background(RMDesign.accent.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("\(service.scheduledCount) reminder\(service.scheduledCount == 1 ? "" : "s") scheduled")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                 Text("Rebuilt automatically whenever bills change.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -224,29 +225,29 @@ struct NotificationsSettingsView: View {
             .controlSize(.small)
         }
         .padding(12)
-        .background(Color.blue.opacity(0.06))
-        .cornerRadius(10)
+        .background(RMDesign.accent.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.blue.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.accent.opacity(0.15), lineWidth: 1)
         )
     }
 
     // MARK: - Info Footer
     private var infoFooter: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: "info.circle.fill")
-                .foregroundStyle(.blue)
-                .font(.system(size: 14))
-            Text("Reminders are scheduled locally using the system notification center. If you deny permission, RentaMan will still function — you just won't receive alerts. Toggling any option above rebuilds the schedule automatically.")
+                .foregroundStyle(RMDesign.accent)
                 .font(.system(size: 12))
+            Text("Reminders are scheduled locally using the system notification center. If you deny permission, RentaMan will still function — you just won't receive alerts. Toggling any option above rebuilds the schedule automatically.")
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.blue.opacity(0.06))
-        .cornerRadius(10)
+        .background(RMDesign.accent.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
     }
 
     // MARK: - Helpers
@@ -255,7 +256,6 @@ struct NotificationsSettingsView: View {
     }
 
     private func openNotificationPreferences() {
-        // Newer macOS (Ventura+) URL, then fall back to the legacy one.
         let candidates = [
             "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
             "x-apple.systempreferences:com.apple.preference.notifications"

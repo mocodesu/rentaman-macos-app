@@ -35,6 +35,7 @@ struct BillTrashView: View {
             footer
         }
         .frame(width: 720, height: 560)
+        .background(RMDesign.pageBackground)
         .alert("Delete permanently?", isPresented: $showingPurgeAllConfirm) {
             Button("Purge All", role: .destructive) { purgeAll() }
             Button("Cancel", role: .cancel) {}
@@ -50,30 +51,29 @@ struct BillTrashView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "trash.fill")
-                .font(.title2)
-                .foregroundStyle(.red)
-            VStack(alignment: .leading, spacing: 2) {
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(RMDesign.danger)
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Trash")
-                    .font(.title2).fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Text(deletedBills.isEmpty
                      ? "Nothing here"
                      : "\(deletedBills.count) bill\(deletedBills.count == 1 ? "" : "s") — restore or permanently delete")
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
+                    .font(.system(size: 16))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
         }
-        .padding(20)
-        .background(Color(NSColor.windowBackgroundColor))
+        .padding(16)
     }
 
     private var tableArea: some View {
@@ -83,9 +83,9 @@ struct BillTrashView: View {
                     Image(systemName: bill.category.iconName)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(bill.category.color)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(bill.title)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 12.5, weight: .medium))
                             .lineLimit(1)
                         if let prop = bill.property {
                             Text(prop.name)
@@ -100,7 +100,7 @@ struct BillTrashView: View {
 
             TableColumn("Amount") { bill in
                 Text(CurrencyFormatter.format(bill.amount, as: currency))
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold))
                     .monospacedDigit()
             }
             .width(110)
@@ -129,7 +129,7 @@ struct BillTrashView: View {
                         restore(bill)
                     } label: {
                         Image(systemName: "arrow.uturn.backward.circle.fill")
-                            .font(.system(size: 13)).foregroundStyle(.green)
+                            .font(.system(size: 12)).foregroundStyle(RMDesign.success)
                     }
                     .buttonStyle(.borderless)
                     .help("Restore")
@@ -138,7 +138,7 @@ struct BillTrashView: View {
                         purge(bill)
                     } label: {
                         Image(systemName: "trash.slash.fill")
-                            .font(.system(size: 13)).foregroundStyle(.red)
+                            .font(.system(size: 12)).foregroundStyle(RMDesign.danger)
                     }
                     .buttonStyle(.borderless)
                     .help("Delete permanently")
@@ -168,9 +168,9 @@ struct BillTrashView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "trash")
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("Trash is empty")
                 .font(.system(size: 14, weight: .semibold))
@@ -193,14 +193,14 @@ struct BillTrashView: View {
                     Label("Purge All", systemImage: "trash.slash.fill")
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(.red)
+                .foregroundStyle(RMDesign.danger)
                 .disabled(deletedBills.isEmpty)
             }
             Spacer()
             Button("Close") { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(20)
+        .padding(16)
     }
 
     // MARK: - Actions

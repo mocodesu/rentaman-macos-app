@@ -120,6 +120,7 @@ struct AuditLogView: View {
             footer
         }
         .frame(width: 940, height: 640)
+        .background(RMDesign.pageBackground)
         .alert("Clear audit log?", isPresented: $showingClearConfirm) {
             Button("Clear", role: .destructive) {
                 AuditLog.shared.clearAll(context: modelContext)
@@ -132,52 +133,52 @@ struct AuditLogView: View {
 
     // MARK: - Header
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.title2)
-                .foregroundStyle(.blue)
-            VStack(alignment: .leading, spacing: 2) {
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(RMDesign.accent)
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Audit Log")
-                    .font(.title2).fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Text("\(entries.count) entr\(entries.count == 1 ? "y" : "ies") — every change to your bills and properties")
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
+                    .font(.system(size: 16))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
         }
-        .padding(20)
+        .padding(16)
     }
 
     // MARK: - Filter Bar
     private var filterBar: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
                 TextField("Search title or action…", text: $searchText)
                     .textFieldStyle(.plain).font(.system(size: 12))
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(height: 30).frame(width: 220)
-            .background(Color(NSColor.textBackgroundColor))
-            .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.gray.opacity(0.15), lineWidth: 1))
+            .padding(.horizontal, 8)
+            .frame(height: 26).frame(width: 220)
+            .background(RMDesign.fieldBackground)
+            .clipShape(RoundedRectangle(cornerRadius: RMDesign.fieldRadius))
+            .overlay(RoundedRectangle(cornerRadius: RMDesign.fieldRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1))
 
             Picker("", selection: $entityFilter) {
                 ForEach(EntityFilter.allCases) { Text($0.rawValue).tag($0) }
@@ -201,7 +202,7 @@ struct AuditLogView: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
@@ -226,24 +227,24 @@ struct AuditLogView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: entry.action.icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(Color(hex: entry.action.colorHex).gradient)
-                    .cornerRadius(7)
+                    .frame(width: 22, height: 22)
+                    .background(Color(hex: entry.action.colorHex))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(entry.action.shortLabel)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(Color(hex: entry.action.colorHex))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Color(hex: entry.action.colorHex).opacity(0.12))
-                            .cornerRadius(3)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
 
                         Text(entry.entityTitle)
-                            .font(.system(size: 12.5, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
@@ -272,9 +273,9 @@ struct AuditLogView: View {
                     .monospacedDigit()
                     .frame(width: 60, alignment: .trailing)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(isSelected ? Color.accentColor.opacity(0.10) : Color.clear)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(isSelected ? RMDesign.accentSoft : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -285,20 +286,20 @@ struct AuditLogView: View {
     private var detailPane: some View {
         if let entry = selectedEntry {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     // Header
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
                             Image(systemName: entry.action.icon)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 30, height: 30)
-                                .background(Color(hex: entry.action.colorHex).gradient)
-                                .cornerRadius(8)
+                                .frame(width: 26, height: 26)
+                                .background(Color(hex: entry.action.colorHex))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
 
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(entry.action.label)
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.system(size: 12.5, weight: .semibold))
                                 Text(entry.entityType.label)
                                     .font(.system(size: 10))
                                     .foregroundStyle(.secondary)
@@ -306,7 +307,7 @@ struct AuditLogView: View {
                         }
 
                         Text(entry.entityTitle)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .lineLimit(2)
 
                         Text(longAbsolute(entry.timestamp))
@@ -324,12 +325,12 @@ struct AuditLogView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.gray.opacity(0.06))
-                            .cornerRadius(8)
+                            .background(Color.gray.opacity(0.05))
+                            .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
                     } else {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 6) {
                             Text("Changes")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .tracking(0.3)
 
@@ -342,24 +343,24 @@ struct AuditLogView: View {
                                     HStack(alignment: .top, spacing: 6) {
                                         Text(change.old ?? "—")
                                             .font(.system(size: 11, design: .monospaced))
-                                            .foregroundStyle(.red.opacity(0.85))
+                                            .foregroundStyle(RMDesign.danger.opacity(0.85))
                                             .lineLimit(3)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                         Image(systemName: "arrow.right")
-                                            .font(.system(size: 9, weight: .bold))
+                                            .font(.system(size: 9, weight: .semibold))
                                             .foregroundStyle(.tertiary)
                                             .padding(.top, 2)
                                         Text(change.new ?? "—")
                                             .font(.system(size: 11, design: .monospaced))
-                                            .foregroundStyle(.green.opacity(0.9))
+                                            .foregroundStyle(RMDesign.success.opacity(0.9))
                                             .lineLimit(3)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                 }
                                 .padding(10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.gray.opacity(0.06))
-                                .cornerRadius(8)
+                                .background(Color.gray.opacity(0.05))
+                                .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
                             }
                         }
                     }
@@ -367,7 +368,7 @@ struct AuditLogView: View {
                     if let note = entry.note, !note.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Note")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .tracking(0.3)
                             Text(note)
@@ -376,13 +377,13 @@ struct AuditLogView: View {
                         }
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.blue.opacity(0.06))
-                        .cornerRadius(8)
+                        .background(RMDesign.accentSoft)
+                        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
                     }
                 }
-                .padding(16)
+                .padding(14)
             }
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(RMDesign.pageBackground)
         } else {
             VStack {
                 Spacer()
@@ -392,18 +393,18 @@ struct AuditLogView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(RMDesign.pageBackground)
         }
     }
 
     // MARK: - Empty
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(entries.isEmpty ? "No activity yet" : "No entries match your filters")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
             Text(entries.isEmpty
                  ? "Every change you make will appear here."
                  : "Try adjusting your search, action, or date filter.")
@@ -425,13 +426,13 @@ struct AuditLogView: View {
                     Label("Clear Log", systemImage: "trash.slash")
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(.red)
+                .foregroundStyle(RMDesign.danger)
             }
             Spacer()
             Button("Close") { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(20)
+        .padding(16)
     }
 
     // MARK: - Helpers

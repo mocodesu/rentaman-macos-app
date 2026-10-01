@@ -73,20 +73,17 @@ struct RentaManSidebar: View {
                 .frame(height: 38)
 
             // Brand header
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(RMDesign.accentGradient)
-                        .frame(width: 28, height: 28)
-                        .shadow(color: Color.blue.opacity(0.25), radius: 4, y: 2)
-                    Image(systemName: "house.lodge.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+            HStack(spacing: 8) {
+                Image(systemName: "house.lodge.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(RMDesign.accent)
+                    .frame(width: 22, height: 22)
+                    .background(RMDesign.accentSoft)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text("RentaMan")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.primary)
 
                     Text(subtitle)
@@ -98,8 +95,8 @@ struct RentaManSidebar: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
 
             // Navigation list
             List(selection: listSelection) {
@@ -126,10 +123,10 @@ struct RentaManSidebar: View {
     private func sidebarRow(_ tab: AppTab) -> some View {
         Label {
             Text(tab.rawValue)
-                .font(.system(size: 13, weight: selection == tab ? .semibold : .regular))
+                .font(.system(size: 12.5, weight: selection == tab ? .medium : .regular))
         } icon: {
             Image(systemName: selection == tab ? tab.selectedIcon : tab.icon)
-                .font(.system(size: 13))
+                .font(.system(size: 12.5))
                 .foregroundStyle(selection == tab ? Color.accentColor : .secondary)
         }
         .tag(tab)

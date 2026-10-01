@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsRootView: View {
     @State private var selectedTab: SettingsTab = .general
-    
+
     enum SettingsTab: String, CaseIterable, Identifiable {
         case general = "General"
         case properties = "Properties"
@@ -10,9 +10,9 @@ struct SettingsRootView: View {
         case convex = "Sync"
         case data = "Data"
         case about = "About"
-        
+
         var id: String { self.rawValue }
-        
+
         var icon: String {
             switch self {
             case .general: return "gearshape.fill"
@@ -24,7 +24,7 @@ struct SettingsRootView: View {
             }
         }
     }
-    
+
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedTab) {
@@ -67,33 +67,35 @@ struct SettingsSection<Content: View>: View {
     let title: String
     let subtitle: String?
     @ViewBuilder let content: Content
-    
+
     init(title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.content = content()
     }
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            
+
             content
-                .padding(16)
+                .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(12)
+                .background(RMDesign.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                        .stroke(RMDesign.borderColor, lineWidth: 1)
                 )
         }
     }
@@ -106,37 +108,45 @@ struct SettingsRow<Trailing: View>: View {
     let title: String
     let subtitle: String?
     @ViewBuilder let trailing: Trailing
-    
-    init(icon: String, iconColor: Color = .blue, title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+
+    init(
+        icon: String,
+        iconColor: Color = .blue,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
         self.icon = icon
         self.iconColor = iconColor
         self.title = title
         self.subtitle = subtitle
         self.trailing = trailing()
     }
-    
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(iconColor.gradient)
-                .cornerRadius(7)
-            
-            VStack(alignment: .leading, spacing: 2) {
+                .frame(width: 22, height: 22)
+                .background(iconColor)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(.primary)
                 if let subtitle {
                     Text(subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            
-            Spacer()
-            
+
+            Spacer(minLength: 8)
+
             trailing
         }
         .padding(.vertical, 4)

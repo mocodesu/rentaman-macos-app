@@ -210,7 +210,7 @@ final class IncomeConfig {
 struct CashFlowPlannerView: View {
     @Environment(\.appCurrency) private var currency: AppCurrency
     @Query(filter: #Predicate<Bill> { $0.isDeleted == false })
-private var allBills: [Bill]
+    private var allBills: [Bill]
 
     @State private var config = IncomeConfig.shared
     @State private var showIncomeEditor = false
@@ -220,23 +220,17 @@ private var allBills: [Bill]
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
-                if config.streams.isEmpty {
-                    emptyIncome
-                } else {
-                    let result = analytics
-                    holdbackCard(result)
-                    balanceChart(result)
-                    dayByDayList(result)
-                }
+        VStack(alignment: .leading, spacing: 16) {
+            header
+            if config.streams.isEmpty {
+                emptyIncome
+            } else {
+                let result = analytics
+                holdbackCard(result)
+                balanceChart(result)
+                dayByDayList(result)
             }
-            .padding(24)
-            .frame(maxWidth: 960, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .background(RMDesign.pageBackground)
         .sheet(isPresented: $showIncomeEditor) {
             IncomeEditorSheet(config: config, currency: currency)
         }
@@ -245,11 +239,22 @@ private var allBills: [Bill]
     // MARK: - Header
     private var header: some View {
         HStack(alignment: .center) {
-            RMPageHeader(
-                icon: "calendar.badge.clock",
-                title: "Cash Flow",
-                subtitle: "Daily balance through this month"
-            )
+            HStack(spacing: 10) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(RMDesign.accent)
+                    .frame(width: 24, height: 24)
+                    .background(RMDesign.accent.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Cash Flow")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Daily balance through this month")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
             Spacer()
             Button {
                 showIncomeEditor = true
@@ -257,26 +262,30 @@ private var allBills: [Bill]
                 Label("Income", systemImage: "banknote")
             }
             .buttonStyle(.bordered)
+            .controlSize(.regular)
         }
     }
 
     // MARK: - Holdback
     private func holdbackCard(_ result: CashFlowAnalytics.Result) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let tint = result.holdbackSuggestion > 0 ? RMDesign.warning : RMDesign.success
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: result.holdbackSuggestion > 0 ? "shield.lefthalf.filled" : "checkmark.seal.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background((result.holdbackSuggestion > 0 ? Color.orange : Color.green).gradient)
-                    .cornerRadius(9)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(tint)
+                    .frame(width: 26, height: 26)
+                    .background(tint.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("Holdback Recommendation")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 12.5, weight: .semibold))
                     Text(result.holdbackNote)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
             }
@@ -284,44 +293,53 @@ private var allBills: [Bill]
             if result.holdbackSuggestion > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(CurrencyFormatter.format(result.holdbackSuggestion, as: currency))
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.system(size: 28, weight: .semibold))
                         .monospacedDigit()
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(tint)
                     Text("to reserve on the 2nd")
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
 
             // Small summary strip
-            HStack(spacing: 12) {
-                CashFlowStat(label: "Income",     value: CurrencyFormatter.format(result.totalIncome, as: currency),  color: .green)
-                CashFlowStat(label: "Bills",      value: CurrencyFormatter.format(result.totalOutflow, as: currency), color: .red)
-                CashFlowStat(label: "Lowest day", value: result.lowestBalance.map { CurrencyFormatter.format($0.balance, as: currency) } ?? "—", color: (result.lowestBalance?.balance ?? 0) < 0 ? .red : .blue)
-                CashFlowStat(label: "Danger days", value: "\(result.dangerDays.count)", color: result.dangerDays.isEmpty ? .green : .orange)
+            HStack(spacing: 10) {
+                CashFlowStat(label: "Income",     value: CurrencyFormatter.format(result.totalIncome, as: currency),  color: RMDesign.success)
+                CashFlowStat(label: "Bills",      value: CurrencyFormatter.format(result.totalOutflow, as: currency), color: RMDesign.danger)
+                CashFlowStat(label: "Lowest day", value: result.lowestBalance.map { CurrencyFormatter.format($0.balance, as: currency) } ?? "—", color: (result.lowestBalance?.balance ?? 0) < 0 ? RMDesign.danger : RMDesign.accent)
+                CashFlowStat(label: "Danger days", value: "\(result.dangerDays.count)", color: result.dangerDays.isEmpty ? RMDesign.success : RMDesign.warning)
             }
         }
-        .padding(16)
+        .padding(14)
         .background(RMDesign.cardBackground)
-        .cornerRadius(RMDesign.cardRadius)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         .overlay(
             RoundedRectangle(cornerRadius: RMDesign.cardRadius)
-                .stroke(Color.orange.opacity(result.holdbackSuggestion > 0 ? 0.25 : 0.1), lineWidth: 1)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
         )
     }
 
     // MARK: - Chart
     private func balanceChart(_ result: CashFlowAnalytics.Result) -> some View {
-        RMContentCard(
-            title: "Daily Balance",
-            icon: "chart.xyaxis.line",
-            iconColor: .blue,
-            subtitle: "Your cash position through the month"
-        ) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(RMDesign.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Daily Balance")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Your cash position through the month")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
             Chart {
                 // Zero line
                 RuleMark(y: .value("Zero", 0))
-                    .foregroundStyle(.red.opacity(0.4))
+                    .foregroundStyle(RMDesign.danger.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
 
                 // Current balance
@@ -332,7 +350,7 @@ private var allBills: [Bill]
                     )
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [Color.blue.opacity(0.25), Color.blue.opacity(0.02)],
+                            colors: [RMDesign.accent.opacity(0.20), RMDesign.accent.opacity(0.02)],
                             startPoint: .top, endPoint: .bottom
                         )
                     )
@@ -342,8 +360,8 @@ private var allBills: [Bill]
                         x: .value("Day", p.day),
                         y: .value("Balance", CurrencyFormatter.convert(p.balance, to: currency))
                     )
-                    .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .foregroundStyle(RMDesign.accent)
+                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                     .interpolationMethod(.monotone)
                 }
 
@@ -353,14 +371,14 @@ private var allBills: [Bill]
                         x: .value("Day", p.day),
                         y: .value("With Holdback", CurrencyFormatter.convert(p.balanceIfHeldBack, to: currency))
                     )
-                    .foregroundStyle(.orange)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5,lineCap: .round, dash: [4, 3]))
+                    .foregroundStyle(RMDesign.warning)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 3]))
                     .interpolationMethod(.monotone)
                 }
             }
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 10)) { value in
-                    AxisGridLine().foregroundStyle(.gray.opacity(0.1))
+                    AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                     AxisValueLabel {
                         if let day = value.as(Int.self) {
                             Text("\(day)").font(.system(size: 10))
@@ -370,7 +388,7 @@ private var allBills: [Bill]
             }
             .chartYAxis {
                 AxisMarks { value in
-                    AxisGridLine().foregroundStyle(.gray.opacity(0.1))
+                    AxisGridLine().foregroundStyle(RMDesign.dividerColor)
                     AxisValueLabel {
                         if let amount = value.as(Double.self), amount.isFinite {
                             Text(CurrencyFormatter.compact(
@@ -382,42 +400,58 @@ private var allBills: [Bill]
                     }
                 }
             }
-            .frame(height: 260)
+            .frame(height: 240)
 
             HStack(spacing: 16) {
-                legend(color: .blue,  label: "Current plan")
-                legend(color: .orange, label: "With holdback applied")
+                legend(color: RMDesign.accent,  label: "Current plan")
+                legend(color: RMDesign.warning, label: "With holdback applied")
                 Spacer()
             }
             .padding(.top, 4)
         }
+        .padding(14)
+        .background(RMDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
+        )
     }
 
     // MARK: - Day list
     private func dayByDayList(_ result: CashFlowAnalytics.Result) -> some View {
-        RMContentCard(
-            title: "Day-by-Day",
-            icon: "list.number",
-            iconColor: .purple,
-            subtitle: "Income and bills for each day"
-        ) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "list.number")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.purple)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Day-by-Day")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Income and bills for each day")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
             VStack(spacing: 0) {
                 ForEach(result.points) { p in
                     let isDanger = p.balance < 0
                     HStack(spacing: 12) {
                         Text("\(p.day)")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold))
                             .monospacedDigit()
-                            .frame(width: 26, alignment: .leading)
+                            .frame(width: 24, alignment: .leading)
 
                         if p.income > 0 {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.down.circle.fill")
                                     .font(.system(size: 10))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(RMDesign.success)
                                 Text("+\(CurrencyFormatter.format(p.income, as: currency))")
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(RMDesign.success)
                                     .monospacedDigit()
                             }
                             .frame(width: 130, alignment: .leading)
@@ -429,10 +463,10 @@ private var allBills: [Bill]
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.up.circle.fill")
                                     .font(.system(size: 10))
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(RMDesign.danger)
                                 Text("-\(CurrencyFormatter.format(p.outflow, as: currency))")
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(RMDesign.danger)
                                     .monospacedDigit()
                             }
                             .frame(width: 130, alignment: .leading)
@@ -446,36 +480,43 @@ private var allBills: [Bill]
                             if isDanger {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: 9))
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(RMDesign.danger)
                             }
                             Text(CurrencyFormatter.format(p.balance, as: currency))
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .font(.system(size: 12, weight: .semibold))
                                 .monospacedDigit()
-                                .foregroundStyle(isDanger ? .red : .primary)
+                                .foregroundStyle(isDanger ? RMDesign.danger : .primary)
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(isDanger ? Color.red.opacity(0.06) : Color.clear)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(isDanger ? RMDesign.danger.opacity(0.05) : Color.clear)
 
                     if p.day < result.points.count {
-                        Divider().padding(.leading, 12)
+                        Divider().padding(.leading, 10)
                     }
                 }
             }
-            .background(Color(NSColor.textBackgroundColor).opacity(0.4))
-            .cornerRadius(10)
+            .background(RMDesign.fieldBackground.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
         }
+        .padding(14)
+        .background(RMDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
+        )
     }
 
     // MARK: - Empty
     private var emptyIncome: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "banknote")
-                .font(.system(size: 40, weight: .light))
+                .font(.system(size: 32, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("Add your income streams")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
             Text("Tell us when you get paid so we can plan around it.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -488,6 +529,12 @@ private var allBills: [Bill]
         }
         .frame(maxWidth: .infinity)
         .padding(40)
+        .background(RMDesign.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                .stroke(RMDesign.borderColor, lineWidth: 1)
+        )
     }
 
     private func legend(color: Color, label: String) -> some View {
@@ -507,11 +554,11 @@ private struct CashFlowStat: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label.uppercased())
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .tracking(0.3)
             Text(value)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(color)
                 .lineLimit(1)
@@ -519,8 +566,8 @@ private struct CashFlowStat: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color(NSColor.textBackgroundColor).opacity(0.4))
-        .cornerRadius(8)
+        .background(RMDesign.fieldBackground.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
     }
 }
 
@@ -539,54 +586,58 @@ struct IncomeEditorSheet: View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "banknote.fill")
-                    .font(.title2)
-                    .foregroundStyle(.green)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(RMDesign.success)
                 Text("Income Streams")
-                    .font(.title2).fontWeight(.bold)
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.title3).foregroundStyle(.secondary)
+                        .font(.system(size: 16)).foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(20)
+            .padding(16)
 
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     Text("When do you get paid? Amounts are entered in \(currency.rawValue).")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
 
                     ForEach(streams) { stream in
-                        HStack(spacing: 12) {
+                        HStack(spacing: 10) {
                             Text("Day \(stream.dayOfMonth)")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 12.5, weight: .semibold))
                                 .frame(width: 60, alignment: .leading)
                             Text(stream.label)
-                                .font(.system(size: 13))
+                                .font(.system(size: 12.5))
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Text(CurrencyFormatter.format(stream.amount, as: currency))
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .font(.system(size: 12.5, weight: .semibold))
                                 .monospacedDigit()
                             Button {
                                 streams.removeAll { $0.id == stream.id }
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.red)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(RMDesign.danger)
                             }
                             .buttonStyle(.borderless)
                         }
-                        .padding(12)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(10)
+                        .padding(10)
+                        .background(RMDesign.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: RMDesign.cardRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: RMDesign.cardRadius)
+                                .stroke(RMDesign.borderColor, lineWidth: 1)
+                        )
                     }
 
-                    Divider().padding(.vertical, 4)
+                    Divider().padding(.vertical, 2)
 
                     Text("Add a new stream")
                         .font(.system(size: 12, weight: .semibold))
@@ -621,7 +672,7 @@ struct IncomeEditorSheet: View {
                         .disabled(Double(newAmount) == nil || newLabel.isEmpty)
                     }
                 }
-                .padding(20)
+                .padding(16)
             }
 
             Divider()
@@ -638,9 +689,10 @@ struct IncomeEditorSheet: View {
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             }
-            .padding(20)
+            .padding(16)
         }
         .frame(width: 620, height: 520)
+        .background(RMDesign.pageBackground)
         .onAppear {
             streams = config.streams
         }

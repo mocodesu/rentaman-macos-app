@@ -134,14 +134,14 @@ struct AllBillsView: View {
                 UndoToast(state: undo) {
                     performUndo(undo)
                 } onDismiss: {
-                    withAnimation(.easeOut(duration: 0.2)) { undoState = nil }
+                    withAnimation(RMDesign.ease) { undoState = nil }
                 }
                 .padding(.bottom, 100)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(50)
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: undoState)
+        .animation(RMDesign.ease, value: undoState)
         .sheet(item: $editingBillWrapper) { wrapper in
             AddBillView(billToEdit: wrapper.bill)
                 .environment(\.appCurrency, currency)
@@ -169,7 +169,7 @@ struct AllBillsView: View {
 
     // MARK: - Header
     private var headerView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 14) {
             HStack(alignment: .center) {
                 RMPageHeader(
                     icon: "list.bullet.rectangle.portrait.fill",
@@ -177,18 +177,10 @@ struct AllBillsView: View {
                     subtitle: "\(cachedFiltered.count) bill\(cachedFiltered.count == 1 ? "" : "s") in view"
                 )
                 Spacer()
-                HStack(spacing: 8) {
-                    StatPill(icon: "banknote.fill", label: "Total",
-                             value: CurrencyFormatter.format(cachedStats.total, as: currency), color: .blue)
-                    StatPill(icon: "checkmark.circle.fill", label: "Paid",
-                             value: CurrencyFormatter.format(cachedStats.paid, as: currency), color: .green)
-                    if cachedStats.unpaid > 0 {
-                        StatPill(icon: "clock.fill", label: "Unpaid",
-                                 value: CurrencyFormatter.format(cachedStats.unpaid, as: currency), color: .orange)
-                    }
-                }
+                inlineMetricStrip
             }
-            HStack(spacing: 10) {
+
+            HStack(spacing: 8) {
                 SearchField(text: $searchText)
                 PropertyFilterMenu(properties: properties, selection: $selectedPropertyId)
                 StatusSegmentedControl(selection: $filterStatus)
@@ -204,6 +196,7 @@ struct AllBillsView: View {
                 .help("Pre-create your recurring bills for the next few months")
 
                 Spacer()
+
                 if !selection.isEmpty {
                     Button { selection.removeAll() } label: {
                         Label("Clear selection", systemImage: "xmark.circle.fill")
@@ -215,8 +208,52 @@ struct AllBillsView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 24)
+        .padding(.vertical, 20)
         .background(RMDesign.pageBackground)
+    }
+
+    // MARK: - Inline Metric Strip
+    private var inlineMetricStrip: some View {
+        HStack(spacing: 0) {
+            metricBlock(
+                label: "Total",
+                value: CurrencyFormatter.format(cachedStats.total, as: currency)
+            )
+            metricSeparator
+            metricBlock(
+                label: "Paid",
+                value: CurrencyFormatter.format(cachedStats.paid, as: currency),
+                valueColor: RMDesign.success
+            )
+            if cachedStats.unpaid > 0 {
+                metricSeparator
+                metricBlock(
+                    label: "Unpaid",
+                    value: CurrencyFormatter.format(cachedStats.unpaid, as: currency),
+                    valueColor: RMDesign.warning
+                )
+            }
+        }
+    }
+
+    private func metricBlock(label: String, value: String, valueColor: Color = .primary) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 12, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(valueColor)
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private var metricSeparator: some View {
+        Rectangle()
+            .fill(RMDesign.dividerColor)
+            .frame(width: 1, height: 24)
     }
 
     // MARK: - Cache
@@ -311,7 +348,7 @@ struct AllBillsView: View {
             titles: targets.map { $0.title },
             deletedAt: now
         )
-        withAnimation { undoState = undo }
+        withAnimation(RMDesign.ease) { undoState = undo }
         selection.removeAll()
         recomputeAll()
     }
@@ -333,7 +370,7 @@ struct AllBillsView: View {
         }
         try? modelContext.save()
         SyncService.shared.schedulePush()
-        withAnimation(.easeOut(duration: 0.2)) { undoState = nil }
+        withAnimation(RMDesign.ease) { undoState = nil }
         recomputeAll()
     }
 
@@ -389,17 +426,17 @@ private struct UndoToast: View {
     @State private var progress: Double = 1.0
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Image(systemName: "trash.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(Color.red.gradient)
-                .cornerRadius(8)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(RMDesign.danger)
+                .frame(width: 24, height: 24)
+                .background(RMDesign.danger.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(state.summary)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12.5, weight: .medium))
                     .lineLimit(1)
                 Text("Tap Undo to restore")
                     .font(.system(size: 11))
@@ -412,7 +449,7 @@ private struct UndoToast: View {
                 onUndo()
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
+            .controlSize(.small)
             .keyboardShortcut("z", modifiers: .command)
             .help("Undo delete (⌘Z)")
 
@@ -420,30 +457,30 @@ private struct UndoToast: View {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: RMDesign.cardRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.red.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: RMDesign.cardRadius, style: .continuous)
+                .stroke(RMDesign.danger.opacity(0.25), lineWidth: 1)
         )
         .overlay(alignment: .bottomLeading) {
             GeometryReader { geo in
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.red.opacity(0.45))
+                RoundedRectangle(cornerRadius: RMDesign.cardRadius, style: .continuous)
+                    .fill(RMDesign.danger.opacity(0.4))
                     .frame(width: geo.size.width * progress, height: 2)
             }
             .frame(height: 2)
             .offset(y: -1)
             .padding(.horizontal, 1)
         }
-        .shadow(color: .black.opacity(0.12), radius: 14, y: 5)
-        .frame(maxWidth: 480)
+        .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
+        .frame(maxWidth: 460)
         .padding(.horizontal, 24)
         .task(id: state.id) {
             progress = 1.0
@@ -499,44 +536,44 @@ private struct AllBillsTable: View {
             .width(45)
 
             TableColumn("Title", value: \.title) { bill in
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if bill.isRecurring {
                         if bill.isPaused {
                             Image(systemName: "pause.circle.fill")
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(RMDesign.warning)
                                 .help("Paused recurring bill (\(bill.recurringFrequency.rawValue))")
                         } else {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(RMDesign.accent)
                                 .help("Recurring: \(bill.recurringFrequency.rawValue)")
                         }
                     }
 
                     Text(bill.title)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12.5, weight: .medium))
                         .lineLimit(1)
 
                     if bill.isRecurring && bill.isPaused {
                         Text("PAUSED")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.orange.gradient)
-                            .cornerRadius(3)
+                            .background(RMDesign.warning)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
                     }
 
                     if let limit = BillLimits.shared.limit(for: bill.title),
                        bill.amount > limit {
                         Text("OVER")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.red.gradient)
-                            .cornerRadius(3)
+                            .background(RMDesign.danger)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
                             .help("Exceeds your \(CurrencyFormatter.format(limit, as: currency)) limit")
                     }
                 }
@@ -546,7 +583,7 @@ private struct AllBillsTable: View {
             TableColumn("Property") { bill in
                 if let prop = bill.property {
                     HStack(spacing: 6) {
-                        Circle().fill(Color(hex: prop.colorHex)).frame(width: 8, height: 8)
+                        Circle().fill(Color(hex: prop.colorHex)).frame(width: 7, height: 7)
                         Text(prop.name).font(.system(size: 12)).lineLimit(1)
                     }
                 } else {
@@ -568,7 +605,7 @@ private struct AllBillsTable: View {
 
             TableColumn("Amount", value: \.amount) { bill in
                 Text(CurrencyFormatter.format(bill.amount, as: currency))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .monospacedDigit()
             }
             .width(min: 110, ideal: 140)
@@ -577,7 +614,7 @@ private struct AllBillsTable: View {
                 if bill.isPaid {
                     HStack(spacing: 5) {
                         Image(systemName: bill.paymentMethod.iconName)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(bill.paymentMethod.color)
                         Text(bill.paymentMethod.displayName)
                             .font(.system(size: 11))
@@ -593,13 +630,13 @@ private struct AllBillsTable: View {
             .width(min: 100, ideal: 120)
 
             TableColumn("Due Date", value: \.dueDate) { bill in
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Text(bill.dueDate.formatted(date: .abbreviated, time: .omitted))
                         .font(.system(size: 12))
-                        .foregroundStyle(isOverdue(bill) ? .red : .primary)
+                        .foregroundStyle(isOverdue(bill) ? RMDesign.danger : .primary)
                     if isOverdue(bill) {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 10)).foregroundStyle(.red)
+                            .font(.system(size: 10)).foregroundStyle(RMDesign.danger)
                             .help("Overdue")
                     }
                 }
@@ -613,7 +650,7 @@ private struct AllBillsTable: View {
                             onSetPaid(bill, true)
                         } label: {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 13)).foregroundStyle(.green)
+                                .font(.system(size: 12)).foregroundStyle(RMDesign.success)
                         }
                         .buttonStyle(.borderless)
                         .help("Mark as paid")
@@ -622,7 +659,7 @@ private struct AllBillsTable: View {
                         onOpenTrend(bill)
                     } label: {
                         Image(systemName: "chart.xyaxis.line")
-                            .font(.system(size: 13)).foregroundStyle(.purple)
+                            .font(.system(size: 12)).foregroundStyle(.purple)
                     }
                     .buttonStyle(.borderless)
                     .help("View trend")
@@ -631,7 +668,7 @@ private struct AllBillsTable: View {
                         onOpenSheet(bill)
                     } label: {
                         Image(systemName: "square.and.pencil")
-                            .font(.system(size: 13)).foregroundStyle(.blue)
+                            .font(.system(size: 12)).foregroundStyle(RMDesign.accent)
                     }
                     .buttonStyle(.borderless)
                     .help("Edit")
@@ -706,7 +743,7 @@ struct PaginationBar: View {
     var body: some View {
         HStack(spacing: 12) {
             Text("Showing \(rangeStart)–\(rangeEnd) of \(totalItems)")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
 
@@ -731,7 +768,7 @@ struct PaginationBar: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 26, height: 26)
+                        .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.bordered).controlSize(.small)
                 .disabled(currentPage <= 1 || pageSize == .all)
@@ -744,7 +781,7 @@ struct PaginationBar: View {
                     ), format: .number)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .frame(width: 40)
+                    .frame(width: 38)
                     .multilineTextAlignment(.center)
                     .controlSize(.small)
                     .disabled(pageSize == .all)
@@ -758,14 +795,14 @@ struct PaginationBar: View {
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 26, height: 26)
+                        .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.bordered).controlSize(.small)
                 .disabled(currentPage >= totalPages || pageSize == .all)
             }
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(RMDesign.pageBackground)
     }
 }
@@ -776,9 +813,9 @@ struct SearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(.system(size: 11)).foregroundStyle(.secondary)
             TextField("Search bills...", text: $text)
-                .textFieldStyle(.plain).font(.system(size: 13))
+                .textFieldStyle(.plain).font(.system(size: 12.5))
             if !text.isEmpty {
                 Button { text = "" } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -787,12 +824,12 @@ struct SearchField: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 34).frame(width: 220)
+        .padding(.horizontal, 10)
+        .frame(height: 30).frame(width: 220)
         .background(RMDesign.cardBackground)
-        .cornerRadius(RMDesign.fieldRadius)
+        .clipShape(RoundedRectangle(cornerRadius: RMDesign.fieldRadius))
         .overlay(RoundedRectangle(cornerRadius: RMDesign.fieldRadius)
-            .stroke(Color.gray.opacity(0.15), lineWidth: 1))
+            .stroke(RMDesign.borderColor, lineWidth: 1))
     }
 }
 
@@ -818,17 +855,17 @@ struct PropertyFilterMenu: View {
                 }
             }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "house.fill").font(.system(size: 11)).foregroundStyle(.blue)
-                Text(label).font(.system(size: 13, weight: .medium)).lineLimit(1)
+            HStack(spacing: 6) {
+                Image(systemName: "house.fill").font(.system(size: 11)).foregroundStyle(RMDesign.accent)
+                Text(label).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 12).frame(height: 34).frame(minWidth: 140)
+            .padding(.horizontal, 10).frame(height: 30).frame(minWidth: 140)
             .background(RMDesign.cardBackground)
-            .cornerRadius(RMDesign.fieldRadius)
+            .clipShape(RoundedRectangle(cornerRadius: RMDesign.fieldRadius))
             .overlay(RoundedRectangle(cornerRadius: RMDesign.fieldRadius)
-                .stroke(Color.gray.opacity(0.15), lineWidth: 1))
+                .stroke(RMDesign.borderColor, lineWidth: 1))
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
     }
@@ -842,18 +879,18 @@ struct StatusSegmentedControl: View {
         HStack(spacing: 2) {
             ForEach(AllBillsView.FilterStatus.allCases) { status in
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = status }
+                    withAnimation(RMDesign.ease) { selection = status }
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: status.icon).font(.system(size: 10, weight: .semibold))
+                        Image(systemName: status.icon).font(.system(size: 10, weight: .medium))
                         Text(status.rawValue).font(.system(size: 12, weight: .medium))
                     }
-                    .padding(.horizontal, 12).frame(height: 30)
+                    .padding(.horizontal, 10).frame(height: 26)
                     .foregroundStyle(selection == status ? .white : .primary)
                     .background {
                         if selection == status {
-                            RoundedRectangle(cornerRadius: 7)
-                                .fill(Color.blue.gradient)
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(RMDesign.accent)
                                 .matchedGeometryEffect(id: "statusBg", in: namespace)
                         }
                     }
@@ -863,7 +900,7 @@ struct StatusSegmentedControl: View {
         }
         .padding(2)
         .background(RMDesign.cardBackground)
-        .cornerRadius(9)
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.gray.opacity(0.15), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(RMDesign.borderColor, lineWidth: 1))
     }
 }
