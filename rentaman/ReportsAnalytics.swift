@@ -2,10 +2,6 @@ import Foundation
 import SwiftUI
 
 // MARK: - Reports Analytics Engine
-/// Computes every stat and chart shown in Reports.
-/// All calculations use the SAME effective-date logic as Dashboard:
-///   - Paid bills   → attributed to `paymentDate`
-///   - Unpaid bills → attributed to `dueDate`
 struct ReportsAnalytics {
     let bills: [Bill]
     let properties: [Property]
@@ -15,7 +11,6 @@ struct ReportsAnalytics {
     private var currentYear: Int { calendar.component(.year, from: now) }
     private var currentMonth: Int { calendar.component(.month, from: now) }
 
-    // MARK: - Effective Date Helper
     private func effectiveDate(for bill: Bill) -> Date {
         if bill.isPaid {
             return bill.paymentDate ?? bill.dueDate
@@ -59,10 +54,6 @@ struct ReportsAnalytics {
     }
 
     // MARK: - KPI: Spent This Month (paid) + Expected (unpaid)
-
-    /// Amount actually PAID this month (attributed to `paymentDate`).
-    /// Returns 0 at the start of a new month until the first bill is paid —
-    /// never falls back to a previous month.
     var totalPaidThisMonth: Double {
         let total = bills
             .filter { bill in
@@ -75,8 +66,6 @@ struct ReportsAnalytics {
         return total.isFinite ? total : 0
     }
 
-    /// Amount still expected this month — unpaid bills whose due date
-    /// lands in the current month. This is what remains to be paid.
     var totalExpectedThisMonth: Double {
         let total = bills
             .filter { bill in
@@ -88,15 +77,10 @@ struct ReportsAnalytics {
         return total.isFinite ? total : 0
     }
 
-    /// Total monthly commitment (paid + expected).
-    /// Never falls back to a previous month — always reflects the
-    /// current calendar month only.
     var totalSpentThisMonth: Double {
         totalPaidThisMonth + totalExpectedThisMonth
     }
 
-    /// Subtitle for the "Spent This Month" KPI. Shows the expected
-    /// amount when nothing has been paid yet this month.
     func thisMonthLabel(currency: AppCurrency) -> String {
         let paid     = totalPaidThisMonth
         let expected = totalExpectedThisMonth
@@ -111,7 +95,7 @@ struct ReportsAnalytics {
         if expected == 0 {
             return "\(monthName) · All paid"
         }
-        return "Expected: \(CurrencyFormatter.format(expected, as: currency)) remaining"
+        return "Expected: \(CurrencyFormatter.format(expected, as: currency))"
     }
 
     // MARK: - KPI: Monthly Average (Last 12 Months)
@@ -123,13 +107,15 @@ struct ReportsAnalytics {
     }
 
     // MARK: - KPI: Properties Over Budget
+    // Semantics: property is "over-committed" if total spend this month
+    // (paid + unpaid) exceeds the budget.
     var propertiesOverBudget: [String] {
         budgetVsActual
             .filter { $0.budget > 0 && $0.spent > $0.budget }
             .map { $0.name }
     }
 
-    // MARK: - Chart: Monthly Trend (Last 12 Months)
+    // MARK: - Chart: Monthly Trend
     var monthlyTrend: [MonthPoint] {
         var points: [MonthPoint] = []
         for offset in stride(from: -11, through: 0, by: 1) {
@@ -151,7 +137,7 @@ struct ReportsAnalytics {
         return points
     }
 
-    // MARK: - Chart: Category Breakdown (Current Year)
+    // MARK: - Chart: Category Breakdown
     var categoryBreakdown: [CategoryPoint] {
         let yearBills = bills.filter {
             calendar.component(.year, from: effectiveDate(for: $0)) == currentYear
@@ -169,7 +155,7 @@ struct ReportsAnalytics {
         .sorted { $0.amount > $1.amount }
     }
 
-    // MARK: - Chart: Property Comparison (Current Year)
+    // MARK: - Chart: Property Comparison
     var propertyComparison: [PropertyPoint] {
         let yearBills = bills.filter {
             calendar.component(.year, from: effectiveDate(for: $0)) == currentYear
@@ -190,9 +176,6 @@ struct ReportsAnalytics {
     }
 
     // MARK: - Chart: Budget vs Actual
-    // Uses current month if it has activity, otherwise falls back to the
-    // most recent month with bills — so the chart still shows SOMETHING
-    // on the 1st of a new month before any bills are logged.
     var budgetVsActual: [BudgetPoint] {
         let hasCurrentMonth = bills.contains {
             let d = effectiveDate(for: $0)
@@ -244,7 +227,7 @@ struct ReportsAnalytics {
         return recent.formatted(.dateTime.month(.wide).year())
     }
 
-    // MARK: - Chart: Top 10 Expenses (Current Year)
+    // MARK: - Chart: Top 10 Expenses
     var topExpenses: [Bill] {
         bills
             .filter { calendar.component(.year, from: effectiveDate(for: $0)) == currentYear }
@@ -280,7 +263,6 @@ struct ReportsAnalytics {
         return Double(paidBillsThisYear) / Double(total)
     }
 
-    // MARK: - Helpers
     private func mostRecentBill() -> Date? {
         bills.map { effectiveDate(for: $0) }.max()
     }

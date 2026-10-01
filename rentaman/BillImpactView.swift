@@ -51,7 +51,7 @@ struct BillImpactAnalytics {
         let trend: BillTrendDirection
         let limit: Double?
         let advice: [Advice]
-        let share: Double                 // 0...1 of total monthly spend
+        let share: Double
     }
 
     struct Advice: Identifiable {
@@ -81,21 +81,18 @@ struct BillImpactAnalytics {
         }
     }
 
-    // MARK: - Main computation
     func analyze() -> (items: [Item], totalMonthly: Double) {
         let now = Date()
         guard let start = calendar.date(byAdding: .month, value: -windowMonths, to: now) else {
             return ([], 0)
         }
 
-        // Filter to effective-date range
         let inRange = bills.filter {
             let d = effectiveDate(for: $0)
             return d >= start && d <= now
         }
         guard !inRange.isEmpty else { return ([], 0) }
 
-        // Determine active months (any bill in that calendar month)
         var activeMonths: Set<String> = []
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM"
@@ -104,7 +101,6 @@ struct BillImpactAnalytics {
         }
         let activeMonthCount = max(activeMonths.count, 1)
 
-        // Group by lowercased title
         let grouped = Dictionary(grouping: inRange) { $0.title.lowercased() }
 
         var raw: [Item] = []
@@ -115,7 +111,6 @@ struct BillImpactAnalytics {
             let monthly = total / Double(activeMonthCount)
             let recurring = group.allSatisfy { $0.isRecurring }
 
-            // Trend: last 3 months vs prior 3 months
             let (trendPct, direction) = computeTrend(for: group, now: now)
 
             let limit = limits[key]
@@ -132,8 +127,8 @@ struct BillImpactAnalytics {
                 trendPercent: trendPct,
                 trend: direction,
                 limit: limit,
-                advice: [],       // filled in below
-                share: 0          // filled in below
+                advice: [],
+                share: 0
             ))
         }
 
@@ -153,11 +148,9 @@ struct BillImpactAnalytics {
             return copy
         }
 
-        // Sort by monthly cost descending
         return (raw.sorted { $0.monthlyAverage > $1.monthlyAverage }, grandTotal)
     }
 
-    // MARK: - Trend
     private func computeTrend(for group: [Bill], now: Date) -> (Double, BillTrendDirection) {
         guard let sixAgo = calendar.date(byAdding: .month, value: -6, to: now),
               let threeAgo = calendar.date(byAdding: .month, value: -3, to: now)
@@ -172,7 +165,6 @@ struct BillImpactAnalytics {
             return d >= sixAgo && d < threeAgo
         }
 
-        // Need at least 1 bill on each side to compute a meaningful trend.
         guard !recent.isEmpty, !prior.isEmpty else { return (0, .stable) }
 
         let recentAvg = recent.reduce(0.0) { $0 + $1.amount } / Double(recent.count)
@@ -189,12 +181,12 @@ struct BillImpactAnalytics {
         return (pct, dir)
     }
 
-    // MARK: - Advice engine
     private func generateAdvice(for item: Item, allItems: [Item]) -> [Advice] {
         var advice: [Advice] = []
 
-        // 1. Limit status
+        // 1. Limit status — 3 tiers with epsilon handling
         if let limit = item.limit {
+            let epsilon = 1.0  // tolerance for rounding
             if item.peak > limit * 1.10 {
                 let over = item.peak - limit
                 advice.append(Advice(
@@ -202,7 +194,7 @@ struct BillImpactAnalytics {
                     severity: .critical,
                     text: "Peak hit \(CurrencyFormatter.format(item.peak, as: .ksh)) — \(CurrencyFormatter.format(over, as: .ksh)) over your \(CurrencyFormatter.format(limit, as: .ksh)) limit. Renegotiate or cut."
                 ))
-            } else if item.peak > limit {
+            } else if item.peak > limit + epsilon {
                 advice.append(Advice(
                     id: "limit-warning",
                     severity: .warning,
@@ -210,11 +202,20 @@ struct BillImpactAnalytics {
                 ))
             } else {
                 let headroom = limit - item.peak
-                advice.append(Advice(
-                    id: "limit-good",
-                    severity: .good,
-                    text: "Within your limit — \(CurrencyFormatter.format(headroom, as: .ksh)) headroom under \(CurrencyFormatter.format(limit, as: .ksh))."
-                ))
+                if headroom < epsilon {
+                    // At limit exactly (or within rounding)
+                    advice.append(Advice(
+                        id: "limit-at",
+                        severity: .good,
+                        text: "At your limit (\(CurrencyFormatter.format(limit, as: .ksh))). No overage yet."
+                    ))
+                } else {
+                    advice.append(Advice(
+                        id: "limit-good",
+                        severity: .good,
+                        text: "Within your limit — \(CurrencyFormatter.format(headroom, as: .ksh)) headroom under \(CurrencyFormatter.format(limit, as: .ksh))."
+                    ))
+                }
             }
         } else if item.monthlyAverage > 3_000 {
             advice.append(Advice(
@@ -261,7 +262,7 @@ struct BillImpactAnalytics {
             ))
         }
 
-        // 5. Recurring + stable = candidate to pre-pay / lock in
+        // 5. Recurring + stable = candidate to pre-pay
         if item.isRecurring && item.trend == .stable && item.occurrences >= 6 {
             advice.append(Advice(
                 id: "stable-recurring",
@@ -377,7 +378,6 @@ struct BillImpactView: View {
         var id: String { title }
     }
 
-    // MARK: - Header
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "flame.fill")
@@ -388,7 +388,7 @@ struct BillImpactView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Bill Impact")
                     .font(.system(size: 22, weight: .semibold))
-                Text("What's eating your money — and what to do about it")
+                Text("Ranked by monthly cost and trend")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -405,7 +405,6 @@ struct BillImpactView: View {
         .background(RMDesign.pageBackground)
     }
 
-    // MARK: - Filter bar
     private var filterBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 6) {
@@ -440,7 +439,6 @@ struct BillImpactView: View {
         }
     }
 
-    // MARK: - Summary
     private func summaryPanel(_ r: (items: [BillImpactAnalytics.Item], totalMonthly: Double)) -> some View {
         let overLimit = r.items.filter { item in
             guard let limit = item.limit else { return false }
@@ -473,7 +471,6 @@ struct BillImpactView: View {
         }
     }
 
-    // MARK: - Top burner
     private func topBurnerCard(_ item: BillImpactAnalytics.Item, total: Double) -> some View {
         HStack(spacing: 0) {
             Rectangle()
@@ -531,9 +528,7 @@ struct BillImpactView: View {
         )
     }
 
-    // MARK: - Action panel
     private func actionPanel(_ r: (items: [BillImpactAnalytics.Item], totalMonthly: Double)) -> some View {
-        // Collect all critical & warning advice, cap to 4
         var actions: [(String, BillImpactAnalytics.Advice)] = []
         for item in r.items {
             for adv in item.advice where adv.severity == .critical || adv.severity == .warning {
@@ -592,7 +587,6 @@ struct BillImpactView: View {
         )
     }
 
-    // MARK: - List header
     private var listHeader: some View {
         HStack {
             Text("All Bills Ranked by Cost")
@@ -604,7 +598,6 @@ struct BillImpactView: View {
         }
     }
 
-    // MARK: - List
     private func billList(_ r: (items: [BillImpactAnalytics.Item], totalMonthly: Double)) -> some View {
         VStack(spacing: 6) {
             ForEach(Array(r.items.enumerated()), id: \.element.id) { idx, item in
@@ -618,7 +611,6 @@ struct BillImpactView: View {
         }
     }
 
-    // MARK: - Empty
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
@@ -646,17 +638,23 @@ private struct BillImpactRow: View {
 
     private var isOverLimit: Bool {
         guard let limit = item.limit else { return false }
-        return item.peak > limit
+        return item.peak > limit + 1.0
     }
 
-    private var limitProgress: Double {
+    /// Average position on the limit track (what you typically spend).
+    private var averageProgress: Double {
         guard let limit = item.limit, limit > 0 else { return 0 }
-        return min(item.peak / limit, 1.4)
+        return min(item.monthlyAverage / limit, 1.0)
+    }
+
+    /// Peak position — shown as a tick marker if it exceeds the average.
+    private var peakProgress: Double {
+        guard let limit = item.limit, limit > 0 else { return 0 }
+        return min(item.peak / limit, 1.0)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Top row: rank, title, amount, trend
             HStack(spacing: 10) {
                 Text("\(rank)")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -692,7 +690,6 @@ private struct BillImpactRow: View {
 
                 Spacer()
 
-                // Trend badge
                 HStack(spacing: 3) {
                     Image(systemName: item.trend.icon)
                         .font(.system(size: 9, weight: .medium))
@@ -705,7 +702,6 @@ private struct BillImpactRow: View {
                 .background(item.trend.color.opacity(0.10))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
 
-                // Amount
                 VStack(alignment: .trailing, spacing: 0) {
                     Text(CurrencyFormatter.format(item.monthlyAverage, as: currency))
                         .font(.system(size: 13, weight: .semibold))
@@ -717,7 +713,7 @@ private struct BillImpactRow: View {
                 .frame(minWidth: 120, alignment: .trailing)
             }
 
-            // Limit bar
+            // Limit bar with average fill + peak tick marker
             HStack(spacing: 8) {
                 Button(action: onTapLimit) {
                     HStack(spacing: 4) {
@@ -742,28 +738,44 @@ private struct BillImpactRow: View {
                 if item.limit != nil {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
+                            // Track
                             Capsule()
                                 .fill(Color.gray.opacity(0.12))
                                 .frame(height: 4)
+
+                            // Average fill
                             Capsule()
                                 .fill(isOverLimit ? RMDesign.danger : RMDesign.accent)
-                                .frame(width: geo.size.width * limitProgress, height: 4)
+                                .frame(width: geo.size.width * averageProgress, height: 4)
+
+                            // Peak tick (only shown if it exceeds the average)
+                            if peakProgress > averageProgress + 0.005 {
+                                Rectangle()
+                                    .fill(RMDesign.danger)
+                                    .frame(width: 2, height: 10)
+                                    .offset(x: max(0, geo.size.width * peakProgress - 1))
+                            }
                         }
                         .frame(maxHeight: .infinity, alignment: .center)
                     }
-                    .frame(height: 10)
+                    .frame(height: 12)
 
-                    Text("Peak \(CurrencyFormatter.format(item.peak, as: currency))")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .fixedSize()
+                    HStack(spacing: 8) {
+                        Text("Avg \(CurrencyFormatter.format(item.monthlyAverage, as: currency))")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        Text("Peak \(CurrencyFormatter.format(item.peak, as: currency))")
+                            .font(.system(size: 9))
+                            .foregroundStyle(isOverLimit ? RMDesign.danger : .secondary)
+                            .monospacedDigit()
+                    }
+                    .fixedSize()
                 } else {
                     Spacer()
                 }
             }
 
-            // Advice (first 2)
             if !item.advice.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(item.advice.prefix(2)) { adv in

@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - SyncState Helpers (fix for == .error)
+// MARK: - SyncState Helpers
 extension SyncState {
     var isError: Bool {
         if case .error = self { return true }
@@ -168,19 +168,21 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, 24)
 
-                // MARK: - Sign Out
-                Button {
-                    auth.signOut()
-                } label: {
-                    HStack {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                        Text("Sign Out").fontWeight(.semibold)
+                // MARK: - Sign Out (bordered, softer)
+                HStack {
+                    Spacer()
+                    Button {
+                        auth.signOut()
+                    } label: {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 12.5, weight: .medium))
+                            .frame(minWidth: 160)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .buttonStyle(.bordered)
+                    .tint(RMDesign.danger)
+                    .controlSize(.regular)
+                    Spacer()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(RMDesign.danger)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }

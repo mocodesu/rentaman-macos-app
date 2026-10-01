@@ -10,12 +10,11 @@ enum BudgetBufferLevel: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Percentage added on top of the base (median) amount.
     var percent: Double {
         switch self {
-        case .tight:       return 0.10   // 10% — thin margin
-        case .comfortable: return 0.20   // 20% — recommended default
-        case .generous:    return 0.35   // 35% — lots of slack
+        case .tight:       return 0.10
+        case .comfortable: return 0.20
+        case .generous:    return 0.35
         }
     }
 
@@ -66,24 +65,21 @@ struct MonthlyBudgetAdvisor {
         let endDate: Date
         let monthlyTotals: [MonthlyTotal]
 
-        // Base statistics (of active months)
         let median: Double
         let mean: Double
         let p75: Double
         let lowest: MonthlyTotal?
         let highest: MonthlyTotal?
 
-        // Buffer + final
         let bufferLevel: BudgetBufferLevel
-        let bufferAmount: Double     // absolute currency added
-        let recommended: Double      // base + buffer, rounded up
+        let bufferAmount: Double
+        let recommended: Double
 
         let categoryBreakdown: [CategoryAverage]
         let committedMonthly: Double
         let variableMonthly: Double
     }
 
-    // MARK: - Compute
     func recommend(windowMonths: Int, bufferLevel: BudgetBufferLevel) -> Recommendation? {
         let now = Date()
         let start: Date
@@ -96,7 +92,6 @@ struct MonthlyBudgetAdvisor {
             start = s
         }
 
-        // 1. Bucket by calendar month (using effective date)
         var buckets: [Date: Double] = [:]
         for bill in bills {
             let d = effectiveDate(for: bill)
@@ -105,7 +100,6 @@ struct MonthlyBudgetAdvisor {
             buckets[monthStart, default: 0] += bill.amount
         }
 
-        // 2. Fill every month in the range so the chart has no gaps
         guard let firstMonth = calendar.dateInterval(of: .month, for: start)?.start else { return nil }
         var monthlyTotals: [MonthlyTotal] = []
         var cursor = firstMonth
@@ -124,7 +118,6 @@ struct MonthlyBudgetAdvisor {
             cursor = next
         }
 
-        // 3. Only count months with actual activity.
         let active = monthlyTotals.filter { $0.total > 0 }
         guard !active.isEmpty else { return nil }
 
@@ -142,7 +135,6 @@ struct MonthlyBudgetAdvisor {
         let p75Index = min(count - 1, Int((Double(count) * 0.75).rounded(.down)))
         let p75 = sortedValues[p75Index]
 
-        // 4. Category breakdown (average per active month)
         let inRange = bills.filter {
             let d = effectiveDate(for: $0)
             return d >= start && d <= now
@@ -163,7 +155,6 @@ struct MonthlyBudgetAdvisor {
             )
         }.sorted { $0.monthlyAverage > $1.monthlyAverage }
 
-        // 5. Committed vs variable
         let committedMonthly = inRange
             .filter { $0.isRecurring }
             .reduce(0.0) { $0 + $1.amount } / activeCount
@@ -172,11 +163,19 @@ struct MonthlyBudgetAdvisor {
             .filter { !$0.isRecurring }
             .reduce(0.0) { $0 + $1.amount } / activeCount
 
-        // 6. Buffer + headline recommendation
         let bufferAmount = median * bufferLevel.percent
         let basePlusBuffer = median + bufferAmount
-        // Round up to nearest 500 so the number feels like a real target.
         let recommended = (basePlusBuffer / 500).rounded(.up) * 500
+
+        // ── FIX: exclude current incomplete month from peak/lowest ──
+        // A month with only 1 day of activity looks like the "lowest" month
+        // even though it's just incomplete. Prefer completed months.
+        let currentMonthStart = calendar.dateInterval(of: .month, for: now)?.start ?? now
+        var completedMonths = active.filter { $0.date < currentMonthStart }
+        if completedMonths.isEmpty {
+            // Fall back to including current month if there are no others
+            completedMonths = active
+        }
 
         return Recommendation(
             windowMonths: windowMonths,
@@ -187,10 +186,10 @@ struct MonthlyBudgetAdvisor {
             median: median,
             mean: mean,
             p75: p75,
-            lowest: active.min(by: { $0.total < $1.total }),
-            highest: active.max(by: { $0.total > $1.total }),
+            lowest: completedMonths.min(by: { $0.total < $1.total }),
+            highest: completedMonths.max(by: { $0.total > $1.total }),
             bufferLevel: bufferLevel,
-            bufferAmount: recommended - median,   // actual delta after rounding
+            bufferAmount: recommended - median,
             recommended: recommended,
             categoryBreakdown: categories,
             committedMonthly: committedMonthly,
@@ -282,7 +281,6 @@ struct BudgetRecommendationCard: View {
         .onChange(of: bufferLevel) { _, _ in didApply = false }
     }
 
-    // MARK: - Header
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: "target")
@@ -313,7 +311,6 @@ struct BudgetRecommendationCard: View {
         }
     }
 
-    // MARK: - Buffer Picker
     private var bufferPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
@@ -351,7 +348,6 @@ struct BudgetRecommendationCard: View {
         )
     }
 
-    // MARK: - Headline
     private func headlineNumber(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(CurrencyFormatter.format(rec.recommended, as: currency))
@@ -362,7 +358,6 @@ struct BudgetRecommendationCard: View {
                 .minimumScaleFactor(0.5)
 
             HStack(spacing: 6) {
-                // Base
                 HStack(spacing: 4) {
                     Circle().fill(RMDesign.accent).frame(width: 6, height: 6)
                     Text("Base \(CurrencyFormatter.format(rec.median, as: currency))")
@@ -378,7 +373,6 @@ struct BudgetRecommendationCard: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
 
-                // Buffer
                 HStack(spacing: 4) {
                     Circle().fill(.teal).frame(width: 6, height: 6)
                     Text("Buffer \(CurrencyFormatter.format(rec.bufferAmount, as: currency))")
@@ -394,7 +388,6 @@ struct BudgetRecommendationCard: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
 
-                // Total
                 Text(CurrencyFormatter.format(rec.recommended, as: currency))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(RMDesign.success)
@@ -430,7 +423,6 @@ struct BudgetRecommendationCard: View {
         }
     }
 
-    // MARK: - Stats Row
     private func statsRow(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
         HStack(spacing: 8) {
             AdvisorStat(
@@ -464,7 +456,6 @@ struct BudgetRecommendationCard: View {
         }
     }
 
-    // MARK: - Chart
     private func monthlyChart(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -478,7 +469,6 @@ struct BudgetRecommendationCard: View {
             }
 
             Chart {
-                // Base line (median)
                 RuleMark(
                     y: .value("Base", CurrencyFormatter.convert(rec.median, to: currency))
                 )
@@ -490,7 +480,6 @@ struct BudgetRecommendationCard: View {
                         .foregroundStyle(RMDesign.accent)
                 }
 
-                // Recommended line
                 RuleMark(
                     y: .value("Recommended", CurrencyFormatter.convert(rec.recommended, to: currency))
                 )
@@ -551,7 +540,6 @@ struct BudgetRecommendationCard: View {
         }
     }
 
-    // MARK: - Category Breakdown
     private func categoryBreakdown(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -624,7 +612,6 @@ struct BudgetRecommendationCard: View {
         }
     }
 
-    // MARK: - Apply Row
     private func applyRow(_ rec: MonthlyBudgetAdvisor.Recommendation) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -667,7 +654,6 @@ struct BudgetRecommendationCard: View {
         return "Sets the monthly budget on '\(prop.name)'"
     }
 
-    // MARK: - Empty
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "target")
@@ -684,7 +670,6 @@ struct BudgetRecommendationCard: View {
         .padding(.vertical, 30)
     }
 
-    // MARK: - Apply
     private func applyBudget() {
         guard let rec = recommendation, let prop = defaultProperty else { return }
         prop.monthlyBudget = rec.recommended
@@ -695,7 +680,6 @@ struct BudgetRecommendationCard: View {
         didApply = true
     }
 
-    // MARK: - Small helpers
     private func legend(color: Color, label: String) -> some View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 6, height: 6)

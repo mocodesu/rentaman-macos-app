@@ -37,7 +37,6 @@ struct ReportsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // MARK: - Header
                 HStack(alignment: .center) {
                     RMPageHeader(
                         icon: "chart.pie.fill",
@@ -56,7 +55,6 @@ struct ReportsView: View {
                 }
                 .padding(.horizontal, 24)
 
-                // MARK: - KPI Cards
                 LazyVGrid(columns: kpiColumns, spacing: 12) {
                     HeroKPICard(
                         title: "Total Spent",
@@ -86,30 +84,27 @@ struct ReportsView: View {
                     )
 
                     HeroKPICard(
-                        title: "Over Budget",
+                        title: "Over-committed",
                         value: "\(analytics.propertiesOverBudget.count)",
                         subtitle: analytics.propertiesOverBudget.isEmpty
                             ? "All on track"
                             : analytics.propertiesOverBudget.joined(separator: ", "),
                         icon: "exclamationmark.triangle.fill",
                         gradient: LinearGradient(
-                            colors: analytics.propertiesOverBudget.isEmpty ? [.green, .green] : [.red, .red],
+                            colors: analytics.propertiesOverBudget.isEmpty ? [.green, .green] : [.orange, .orange],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ),
-                        iconAccent: analytics.propertiesOverBudget.isEmpty ? RMDesign.success : RMDesign.danger
+                        iconAccent: analytics.propertiesOverBudget.isEmpty ? RMDesign.success : RMDesign.warning
                     )
                 }
                 .padding(.horizontal, 24)
 
-                // Recommended budget advisor
                 BudgetRecommendationCard()
                     .padding(.horizontal, 24)
 
-                // Cash flow planner
                 CashFlowPlannerView()
                     .padding(.horizontal, 24)
 
-                // MARK: - Payment Rate Strip
                 if analytics.totalBillsThisYear > 0 {
                     PaymentRateStrip(
                         paid: analytics.paidBillsThisYear,
@@ -119,7 +114,6 @@ struct ReportsView: View {
                     .padding(.horizontal, 24)
                 }
 
-                // MARK: - Monthly Trend
                 RMContentCard(
                     title: "Monthly Spending Trend",
                     icon: "chart.xyaxis.line",
@@ -179,7 +173,6 @@ struct ReportsView: View {
                 }
                 .padding(.horizontal, 24)
 
-                // MARK: - Category & Property Comparison
                 HStack(alignment: .top, spacing: 12) {
                     RMContentCard(
                         title: "Category Breakdown",
@@ -232,7 +225,6 @@ struct ReportsView: View {
                 }
                 .padding(.horizontal, 24)
 
-                // MARK: - Budget vs Actual
                 RMContentCard(
                     title: "Budget vs Actual",
                     icon: "gauge.medium",
@@ -271,7 +263,6 @@ struct ReportsView: View {
                 }
                 .padding(.horizontal, 24)
 
-                // MARK: - Top 10 Expenses
                 RMContentCard(
                     title: "Top 10 Expenses",
                     icon: "flame.fill",
@@ -308,7 +299,6 @@ struct ReportsView: View {
         }
     }
 
-    // MARK: - Live Freshness Indicator
     private var liveFreshnessIndicator: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             HStack(spacing: 6) {

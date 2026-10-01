@@ -62,8 +62,6 @@ struct DashboardAnalytics {
     // MARK: - KPI 3: Spent This Month (paid) + Expected (unpaid)
 
     /// Amount actually PAID this month (attributed to `paymentDate`).
-    /// Returns 0 at the start of a new month until the first bill is paid —
-    /// never falls back to a previous month.
     var totalPaidThisMonth: Double {
         let currentMonth = calendar.component(.month, from: now)
         let currentYear  = calendar.component(.year, from: now)
@@ -80,7 +78,7 @@ struct DashboardAnalytics {
     }
 
     /// Amount still expected this month — unpaid bills whose due date
-    /// lands in the current month. This is what remains to be paid.
+    /// lands in the current month.
     var totalExpectedThisMonth: Double {
         let currentMonth = calendar.component(.month, from: now)
         let currentYear  = calendar.component(.year, from: now)
@@ -96,14 +94,11 @@ struct DashboardAnalytics {
     }
 
     /// Total monthly commitment (paid + expected).
-    /// Used for budget progress and chart labels. Never falls back to a
-    /// previous month — always reflects the current calendar month only.
     var totalSpentThisMonth: Double {
         totalPaidThisMonth + totalExpectedThisMonth
     }
 
-    /// Subtitle for the "Spent This Month" KPI. Shows the expected
-    /// amount when nothing has been paid yet this month.
+    /// Subtitle for the "Spent This Month" KPI.
     func spentThisMonthLabel(currency: AppCurrency) -> String {
         let paid     = totalPaidThisMonth
         let expected = totalExpectedThisMonth
@@ -118,7 +113,19 @@ struct DashboardAnalytics {
         if expected == 0 {
             return "\(monthName) · All paid"
         }
-        return "Expected: \(CurrencyFormatter.format(expected, as: currency)) remaining"
+        return "Expected: \(CurrencyFormatter.format(expected, as: currency))"
+    }
+
+    /// Subtitle for the category chart card.
+    var categoryChartSubtitle: String {
+        let month = now.formatted(.dateTime.month(.wide).year())
+        if totalPaidThisMonth == 0 && totalExpectedThisMonth > 0 {
+            return "\(month) · Committed"
+        }
+        if totalExpectedThisMonth == 0 {
+            return "\(month) · Paid"
+        }
+        return "\(month) · Paid + expected"
     }
 
     private func isSameMonth(_ date: Date, month: Int, year: Int) -> Bool {
@@ -127,15 +134,9 @@ struct DashboardAnalytics {
     }
 
     // MARK: - KPI 4: Anomalies
-    /// Combined anomaly detection:
-    ///   1. **Over limit** — bills whose amount exceeds the user-set
-    ///      `BillLimits` for that title, within the last 90 days.
-    ///   2. **Category outlier** — bills in the last 90 days that are
-    ///      >1.5× the average of the same category over the preceding
-    ///      6 months.
-    ///
-    /// A bill that qualifies for both is reported once as an over-limit
-    /// anomaly (user-set thresholds take precedence over statistical ones).
+    /// Combined anomaly detection. Over-limit anomalies are DEDUPLICATED
+    /// by (title, property) — one report per unique group, keeping the
+    /// worst offender.
     var anomalyReports: [Anomaly] {
         guard let ninetyDaysAgo = calendar.date(byAdding: .day, value: -90, to: now),
               let sixMonthsAgo = calendar.date(byAdding: .month, value: -6, to: now) else {
@@ -145,13 +146,25 @@ struct DashboardAnalytics {
         var reports: [Anomaly] = []
         var flaggedIds = Set<String>()
 
-        // ── 1. Over-limit bills ──
+        // ── 1. Over-limit bills (dedupe by title + property) ──
+        var worstPerGroup: [String: Bill] = [:]
         for bill in bills where bill.dueDate >= ninetyDaysAgo {
             guard let limit = BillLimits.shared.limit(for: bill.title) else { continue }
             guard bill.amount > limit else { continue }
+            let groupKey = "\(bill.title.lowercased())|\(bill.property?.id ?? "none")"
+            if let existing = worstPerGroup[groupKey] {
+                if bill.amount > existing.amount {
+                    worstPerGroup[groupKey] = bill
+                }
+            } else {
+                worstPerGroup[groupKey] = bill
+            }
+        }
+        for (groupKey, bill) in worstPerGroup {
+            guard let limit = BillLimits.shared.limit(for: bill.title) else { continue }
             let overBy = bill.amount - limit
             reports.append(Anomaly(
-                id: "\(bill.id)-limit",
+                id: "\(groupKey)-limit",
                 bill: bill,
                 kind: .overLimit(limit: limit, overBy: overBy)
             ))
@@ -184,7 +197,6 @@ struct DashboardAnalytics {
             }
         }
 
-        // Sort: over-limit first, then by due date (newest first).
         return reports.sorted { a, b in
             if a.kind.isOverLimit != b.kind.isOverLimit {
                 return a.kind.isOverLimit
@@ -193,12 +205,10 @@ struct DashboardAnalytics {
         }
     }
 
-    /// Backward-compatible list of flagged bills.
     var anomalies: [Bill] {
         anomalyReports.map { $0.bill }
     }
 
-    /// Subtitle shown under the Anomalies KPI.
     var anomalySubtitle: String {
         guard !anomalyReports.isEmpty else { return "No issues detected" }
         let overLimitCount = anomalyReports.filter { $0.kind.isOverLimit }.count

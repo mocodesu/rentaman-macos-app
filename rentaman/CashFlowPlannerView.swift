@@ -18,12 +18,12 @@ struct CashFlowAnalytics {
 
     struct DayPoint: Identifiable {
         let id: Int
-        let day: Int                 // 1...31
+        let day: Int
         let date: Date
-        let income: Double           // income received this day
-        let outflow: Double          // bills due this day
-        let balance: Double          // running balance at end of day
-        let balanceIfHeldBack: Double // balance with holdback applied
+        let income: Double
+        let outflow: Double
+        let balance: Double
+        let balanceIfHeldBack: Double
     }
 
     struct Result {
@@ -31,8 +31,8 @@ struct CashFlowAnalytics {
         let totalIncome: Double
         let totalOutflow: Double
         let lowestBalance: DayPoint?
-        let dangerDays: [DayPoint]      // days where balance < 0
-        let holdbackSuggestion: Double  // how much to reserve from the 2nd
+        let dangerDays: [DayPoint]
+        let holdbackSuggestion: Double
         let holdbackNote: String
     }
 
@@ -47,23 +47,19 @@ struct CashFlowAnalytics {
 
         let daysInMonth = cal.dateComponents([.day], from: monthStart, to: monthEnd).day ?? 30
 
-        // 1. Group bills by day-of-month (using effective date).
         var billsByDay: [Int: [Bill]] = [:]
         for bill in bills {
             let d = effectiveDate(for: bill)
-            // Only bills in this reference month.
             guard d >= monthStart, d < monthEnd else { continue }
             let day = cal.component(.day, from: d)
             billsByDay[day, default: []].append(bill)
         }
 
-        // 2. Group income by day-of-month.
         var incomeByDay: [Int: Double] = [:]
         for stream in incomeStreams {
             incomeByDay[stream.dayOfMonth, default: 0] += stream.amount
         }
 
-        // 3. Walk day by day, accumulate balance.
         var points: [DayPoint] = []
         var running: Double = 0
         var totalIn: Double = 0
@@ -85,24 +81,18 @@ struct CashFlowAnalytics {
                 income: income,
                 outflow: outflow,
                 balance: running,
-                balanceIfHeldBack: 0   // filled in later
+                balanceIfHeldBack: 0
             ))
         }
 
-        // 4. Find lowest balance and danger days.
         let lowest = points.min(by: { $0.balance < $1.balance })
         let danger = points.filter { $0.balance < 0 }
 
-        // 5. Compute holdback suggestion.
-        //    Logic: the gap between the biggest income (typically the 2nd)
-        //    and the next income (typically the 20th) is where the user
-        //    starves. Reserve enough to keep the balance ≥ 0 during that gap.
         let holdback: Double
         let note: String
         if let peakAfterPay = points.filter({ $0.income > 0 }).min(by: { $0.day < $1.day }),
            let low = lowest, low.balance < 0 {
             let shortfall = abs(low.balance)
-            // Also account for a small safety margin (5% of income).
             let safety = peakAfterPay.income * 0.05
             holdback = shortfall + safety
             note = "Hold back ~\(Int((holdback / max(peakAfterPay.income, 1)) * 100))% of your first payday so you never hit zero before the next one."
@@ -114,9 +104,6 @@ struct CashFlowAnalytics {
             note = "Add income streams to see a recommendation."
         }
 
-        // 6. Second pass — simulate with the holdback applied to the first payday.
-        //    On the biggest payday, we withhold `holdback` and redistribute
-        //    it evenly across the second half of the month (after the last income).
         let firstIncomeDay = incomeByDay.keys.sorted().first ?? 1
         let remainingHoldback = holdback
         var held = 0.0
@@ -130,11 +117,10 @@ struct CashFlowAnalytics {
                 inc -= remainingHoldback
                 held = remainingHoldback
             }
-            // Redistribute the held amount across the last week of the month.
             let releaseStart = max(firstIncomeDay + 1, daysInMonth - 6)
             if p.day >= releaseStart && held > 0 {
                 let releasePerDay = held / Double(max(1, daysInMonth - releaseStart + 1))
-                extraOut = -releasePerDay   // effectively increases available cash
+                extraOut = -releasePerDay
             }
             running2 += inc - p.outflow + (extraOut < 0 ? -extraOut : 0)
             points2.append(DayPoint(
@@ -175,8 +161,6 @@ final class IncomeConfig {
     private init() {
         load()
         if streams.isEmpty {
-            // Sensible defaults: 1,100 USD on the 2nd, 150 USD on the 20th.
-            // Stored in KSH internally.
             streams = [
                 IncomeStream(dayOfMonth: 2, amount: 1100 * ExchangeRate.kshPerUsd, label: "Salary"),
                 IncomeStream(dayOfMonth: 20, amount: 150 * ExchangeRate.kshPerUsd, label: "Top-up"),
@@ -203,6 +187,25 @@ final class IncomeConfig {
             streams[i] = stream
             save()
         }
+    }
+}
+
+// MARK: - Day Group (collapsed consecutive identical days)
+struct CashFlowDayGroup: Identifiable {
+    let id: String
+    let startDay: Int
+    let endDay: Int
+    let days: [CashFlowAnalytics.DayPoint]
+
+    var isRange: Bool { endDay > startDay }
+    var dayCount: Int { days.count }
+    var balance: Double { days.first?.balance ?? 0 }
+    var isDanger: Bool { balance < 0 }
+    var totalIncome: Double { days.reduce(0) { $0 + $1.income } }
+    var totalOutflow: Double { days.reduce(0) { $0 + $1.outflow } }
+
+    var dayLabel: String {
+        isRange ? "\(startDay)–\(endDay)" : "\(startDay)"
     }
 }
 
@@ -302,7 +305,6 @@ struct CashFlowPlannerView: View {
                 }
             }
 
-            // Small summary strip
             HStack(spacing: 10) {
                 CashFlowStat(label: "Income",     value: CurrencyFormatter.format(result.totalIncome, as: currency),  color: RMDesign.success)
                 CashFlowStat(label: "Bills",      value: CurrencyFormatter.format(result.totalOutflow, as: currency), color: RMDesign.danger)
@@ -337,12 +339,10 @@ struct CashFlowPlannerView: View {
             }
 
             Chart {
-                // Zero line
                 RuleMark(y: .value("Zero", 0))
                     .foregroundStyle(RMDesign.danger.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
 
-                // Current balance
                 ForEach(result.points) { p in
                     AreaMark(
                         x: .value("Day", p.day),
@@ -365,7 +365,6 @@ struct CashFlowPlannerView: View {
                     .interpolationMethod(.monotone)
                 }
 
-                // Balance WITH holdback applied
                 ForEach(result.points) { p in
                     LineMark(
                         x: .value("Day", p.day),
@@ -418,9 +417,11 @@ struct CashFlowPlannerView: View {
         )
     }
 
-    // MARK: - Day list
+    // MARK: - Day list (grouped)
     private func dayByDayList(_ result: CashFlowAnalytics.Result) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let groups = groupConsecutiveDays(result.points)
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "list.number")
                     .font(.system(size: 12, weight: .medium))
@@ -433,66 +434,15 @@ struct CashFlowPlannerView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Text("\(groups.count) segment\(groups.count == 1 ? "" : "s")")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
             }
 
             VStack(spacing: 0) {
-                ForEach(result.points) { p in
-                    let isDanger = p.balance < 0
-                    HStack(spacing: 12) {
-                        Text("\(p.day)")
-                            .font(.system(size: 12, weight: .semibold))
-                            .monospacedDigit()
-                            .frame(width: 24, alignment: .leading)
-
-                        if p.income > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.down.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(RMDesign.success)
-                                Text("+\(CurrencyFormatter.format(p.income, as: currency))")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(RMDesign.success)
-                                    .monospacedDigit()
-                            }
-                            .frame(width: 130, alignment: .leading)
-                        } else {
-                            Color.clear.frame(width: 130, height: 1)
-                        }
-
-                        if p.outflow > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(RMDesign.danger)
-                                Text("-\(CurrencyFormatter.format(p.outflow, as: currency))")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(RMDesign.danger)
-                                    .monospacedDigit()
-                            }
-                            .frame(width: 130, alignment: .leading)
-                        } else {
-                            Color.clear.frame(width: 130, height: 1)
-                        }
-
-                        Spacer()
-
-                        HStack(spacing: 4) {
-                            if isDanger {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(RMDesign.danger)
-                            }
-                            Text(CurrencyFormatter.format(p.balance, as: currency))
-                                .font(.system(size: 12, weight: .semibold))
-                                .monospacedDigit()
-                                .foregroundStyle(isDanger ? RMDesign.danger : .primary)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(isDanger ? RMDesign.danger.opacity(0.05) : Color.clear)
-
-                    if p.day < result.points.count {
+                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                    dayGroupRow(group)
+                    if index < groups.count - 1 {
                         Divider().padding(.leading, 10)
                     }
                 }
@@ -506,6 +456,115 @@ struct CashFlowPlannerView: View {
         .overlay(
             RoundedRectangle(cornerRadius: RMDesign.cardRadius)
                 .stroke(RMDesign.borderColor, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func dayGroupRow(_ group: CashFlowDayGroup) -> some View {
+        HStack(spacing: 12) {
+            // Day label (either single "5" or range "5–19")
+            HStack(spacing: 4) {
+                Text(group.dayLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .frame(width: 44, alignment: .leading)
+
+                if group.isRange {
+                    Text("· \(group.dayCount)d")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                }
+            }
+            .frame(width: 64, alignment: .leading)
+
+            // Income
+            if group.totalIncome > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(RMDesign.success)
+                    Text("+\(CurrencyFormatter.format(group.totalIncome, as: currency))")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(RMDesign.success)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+                .frame(width: 130, alignment: .leading)
+            } else {
+                Color.clear.frame(width: 130, height: 1)
+            }
+
+            // Outflow
+            if group.totalOutflow > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(RMDesign.danger)
+                    Text("-\(CurrencyFormatter.format(group.totalOutflow, as: currency))")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(RMDesign.danger)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+                .frame(width: 130, alignment: .leading)
+            } else {
+                Color.clear.frame(width: 130, height: 1)
+            }
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                if group.isDanger {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(RMDesign.danger)
+                }
+                Text(CurrencyFormatter.format(group.balance, as: currency))
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(group.isDanger ? RMDesign.danger : .primary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(group.isDanger ? RMDesign.danger.opacity(0.05) : Color.clear)
+    }
+
+    /// Collapse consecutive days that have the same balance and no activity.
+    private func groupConsecutiveDays(_ points: [CashFlowAnalytics.DayPoint]) -> [CashFlowDayGroup] {
+        var groups: [CashFlowDayGroup] = []
+        var current: [CashFlowAnalytics.DayPoint] = []
+
+        for point in points {
+            if current.isEmpty {
+                current.append(point)
+                continue
+            }
+            let prev = current.last!
+            let sameBalance = abs(point.balance - prev.balance) < 0.01
+            let noActivity = point.income == 0 && point.outflow == 0
+            if sameBalance && noActivity {
+                current.append(point)
+            } else {
+                groups.append(makeGroup(current))
+                current = [point]
+            }
+        }
+        if !current.isEmpty {
+            groups.append(makeGroup(current))
+        }
+        return groups
+    }
+
+    private func makeGroup(_ points: [CashFlowAnalytics.DayPoint]) -> CashFlowDayGroup {
+        let start = points.first?.day ?? 0
+        let end = points.last?.day ?? 0
+        return CashFlowDayGroup(
+            id: "\(start)-\(end)",
+            startDay: start,
+            endDay: end,
+            days: points
         )
     }
 
